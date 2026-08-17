@@ -1,5 +1,10 @@
 # Securitymodel
 
+Production weigert HTTP-origins, onveilige cookies en fixturemode. VPS 1 exposeert geen observer-API:
+de vaste publisher maakt alleen uitgaand HTTPS POST naar snapshot-ingest. Alleen deze VPS-1 container
+heeft de lokale socket en technische monitorcredential; VPS 2 bezit geen Plenora-credentials. Ingest
+controleert scoped bearer, environment, snapshot-ID en sequence. Secrets komen niet in observations.
+
 ## Uitgangspunten
 
 De Cockpit bevat infrastructuurmetadata, incidenten en release-informatie en is daarmee een

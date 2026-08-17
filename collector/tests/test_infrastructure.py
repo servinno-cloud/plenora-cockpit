@@ -2,6 +2,7 @@ import pytest
 
 from src import probes
 from src.database_catalog import DATABASE_QUERIES, query_for
+from src.runner import environment_config
 
 
 def test_database_catalog_is_closed_and_contains_no_business_tables():
@@ -117,3 +118,41 @@ def test_services_policies_and_unknown_rejected(monkeypatch):
     assert any(item["state"] == "DEGRADED" for item in result if item["target"] == "frontend")
     monkeypatch.setattr(probes, "_contract", lambda *args: {"services": [{"key": "unknown"}]})
     assert probes.services_probe("x")[0]["state"] == "UNKNOWN"
+
+
+def test_external_profile_requires_no_vps_credentials_or_fixture_paths(monkeypatch):
+    variables = {
+        "COCKPIT_COLLECTOR_ID": "collector", "COCKPIT_ENVIRONMENT_ID": "environment",
+        "COCKPIT_COLLECTOR_SECRET": "x" * 32, "COCKPIT_INGEST_URL": "http://backend:8000",
+        "COCKPIT_WEB_URL": "https://pilot.plenora.nl", "COCKPIT_HEALTH_URL": "https://pilot.plenora.nl/health/",
+        "COCKPIT_PROBE_PROFILE": "external",
+    }
+    for key, value in variables.items():
+        monkeypatch.setenv(key, value)
+    config = environment_config()
+    assert config["profile"] == "external"
+    assert "boundary_url" not in config and "monitor_database_url" not in config
+
+
+def test_collector_credential_is_required(monkeypatch):
+    for name in (
+        "COCKPIT_COLLECTOR_ID", "COCKPIT_ENVIRONMENT_ID", "COCKPIT_COLLECTOR_SECRET",
+        "COCKPIT_INGEST_URL", "COCKPIT_WEB_URL", "COCKPIT_HEALTH_URL",
+        "COCKPIT_PROBE_PROFILE",
+    ):
+        monkeypatch.setenv(name, "configured")
+    monkeypatch.delenv("COCKPIT_COLLECTOR_SECRET")
+    with pytest.raises(RuntimeError, match="configuration incomplete"):
+        environment_config()
+
+
+def test_external_snapshot_contains_only_web_and_self_monitoring(monkeypatch):
+    from src.runner import build_snapshot
+    config = {
+        "web_url": "x", "health_url": "x", "profile": "external",
+        "collector_id": "c", "environment_id": "e",
+        "release": "test",
+    }
+    monkeypatch.setattr("src.runner.web_probe", lambda *args: [])
+    targets = {item["target"] for item in build_snapshot(config, 1)["observations"]}
+    assert targets == {"collector"}

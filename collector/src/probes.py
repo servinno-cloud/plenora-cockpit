@@ -154,8 +154,12 @@ def host_probe(backup_directory=None, target="host"):
     return result
 
 
-def _contract(url: str, required: set[str], timeout: float = 5.0) -> dict:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+def _contract(url: str, required: set[str], timeout: float = 5.0, token: str | None = None) -> dict:
+    request = urllib.request.Request(url)
+    observer_token = token or os.getenv("COCKPIT_OBSERVER_TOKEN", "")
+    if observer_token:
+        request.add_header("Authorization", f"Bearer {observer_token}")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         if response.status != 200 or int(response.headers.get("Content-Length", "0")) > 32768:
             raise ValueError("invalid observer response")
         value = json.loads(response.read(32769))
@@ -177,9 +181,12 @@ def database_probe(boundary_url: str, target="database"):
         data = _contract(f"{boundary_url}/v1/database", keys)
     except (OSError, ValueError, json.JSONDecodeError):
         return [_obs(target, "db.reachable", "database_contract", None, "UNKNOWN")]
+    return database_probe_values(data, target)
+
+
+def database_probe_values(data: dict, target="database"):
     result = []
     for key, value in data.items():
-        signal = f"db.{key}"
         state = "HEALTHY"
         if key == "reachable" and value is not True:
             state = "CRITICAL"
@@ -189,8 +196,37 @@ def database_probe(boundary_url: str, target="database"):
             state = "CRITICAL" if value > 90 else "WARNING" if value > 80 else state
         elif key == "migration_current" and value is not True:
             state = "WARNING"
-        result.append(_obs(target, signal, "database_contract", value, state))
+        result.append(_obs(target, f"db.{key}", "database_contract", value, state))
     return result
+
+
+def database_connection_probe(dsn: str, target="database"):
+    start = time.monotonic()
+    try:
+        import psycopg
+
+        from .database_catalog import DATABASE_QUERIES
+
+        values = {}
+        with psycopg.connect(
+            dsn, connect_timeout=5, options="-c default_transaction_read_only=on"
+        ) as connection:
+            with connection.cursor() as cursor:
+                for key, query in DATABASE_QUERIES.items():
+                    cursor.execute(query)
+                    value = cursor.fetchone()[0]
+                    values[key] = (
+                        bool(value)
+                        if key == "migration_current"
+                        else float(value)
+                        if key == "connections_percent"
+                        else value
+                    )
+        values["reachable"] = True
+        values["latency_ms"] = round((time.monotonic() - start) * 1000)
+        return database_probe_values(values, target)
+    except Exception:
+        return [_obs(target, "db.reachable", "database_contract", False, "CRITICAL")]
 
 
 def mail_probe(boundary_url: str, target="mail"):
@@ -226,18 +262,23 @@ def mail_probe(boundary_url: str, target="mail"):
 
 def services_probe(boundary_url: str):
     allowed = {"caddy", "frontend", "backend", "db", "mail-worker"}
-    item_keys = {"key", "running", "health", "restart_count", "uptime_seconds", "release_state"}
+    fixture_keys = {"key", "running", "health", "restart_count", "uptime_seconds", "release_state"}
+    production_keys = {
+        "service_key", "running", "health", "restart_count", "started_at", "image_identifier"
+    }
     try:
         envelope = _contract(f"{boundary_url}/v1/services", {"services"})
         if not isinstance(envelope["services"], list):
             raise ValueError("invalid services")
         result = []
         for item in envelope["services"]:
-            if set(item) != item_keys or item["key"] not in allowed:
+            valid_shape = set(item) in {frozenset(fixture_keys), frozenset(production_keys)}
+            service_key = item.get("key", item.get("service_key"))
+            if not valid_shape or service_key not in allowed:
                 raise ValueError("invalid service")
-            if item["health"] not in {"healthy", "unhealthy", "none"}:
+            if item["health"] not in {"healthy", "unhealthy", "starting", "none"}:
                 raise ValueError("invalid service health")
-            for key in item_keys - {"key"}:
+            for key in set(item) - {"key", "service_key"}:
                 value = item[key]
                 state = "HEALTHY"
                 if key == "running" and value is False:
@@ -250,11 +291,42 @@ def services_probe(boundary_url: str):
                         if value == "none"
                         else state
                     )
+                    if value == "starting":
+                        state = "DEGRADED"
                 elif key == "restart_count" and value > 0:
                     state = "WARNING"
                 elif key == "release_state" and value != "current":
                     state = "DEGRADED"
-                result.append(_obs(item["key"], f"service.{key}", "service_boundary", value, state))
+                result.append(_obs(service_key, f"service.{key}", "service_boundary", value, state))
         return result
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return [_obs("backend", "service.running", "service_boundary", None, "UNKNOWN")]
+
+
+def host_boundary_probe(boundary_url: str, target="host"):
+    keys = {
+        "timestamp", "uptime_seconds", "root_total_bytes", "root_used_bytes",
+        "root_free_bytes", "root_inode_used_percent", "backup_total_bytes",
+        "backup_used_bytes", "backup_free_bytes", "backup_inode_used_percent",
+        "load_1m", "load_5m", "load_15m",
+    }
+    try:
+        data = _contract(f"{boundary_url}/v1/host", keys)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return [_obs(target, "host.uptime_seconds", "host_metrics", None, "UNKNOWN", "s")]
+    mapping = {
+        "uptime_seconds": ("host.uptime_seconds", "s"),
+        "root_used_bytes": ("disk.root.used_bytes", "bytes"),
+        "root_free_bytes": ("disk.root.free_bytes", "bytes"),
+        "root_inode_used_percent": ("disk.root.inode_used_percent", "percent"),
+        "backup_used_bytes": ("disk.backup.used_bytes", "bytes"),
+        "backup_free_bytes": ("disk.backup.free_bytes", "bytes"),
+        "backup_inode_used_percent": ("disk.backup.inode_used_percent", "percent"),
+        "load_1m": ("host.load_1m", None),
+        "load_5m": ("host.load_5m", None),
+        "load_15m": ("host.load_15m", None),
+    }
+    return [
+        _obs(target, signal, "host_metrics", data[key], unit=unit)
+        for key, (signal, unit) in mapping.items()
+    ]

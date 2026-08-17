@@ -1,5 +1,10 @@
 # Architectuur
 
+Sprint 3 gebruikt twee VPS'en. De allowlisted observer-publisher op Plenora VPS 1 verzamelt lokaal vaste
+host-, backup-, database- en servicesignalen en pusht `snapshot.v1` uitgaand naar authenticated ingest.
+Cockpit VPS 2 bevat geen Plenora-socket, mount of databasecredential. Een tweede collector op VPS 2
+meet extern Pilot zodat verlies van VPS 1 zichtbaar blijft. Sequences zijn per collectoridentiteit.
+
 ## Doel en grenzen
 
 De Cockpit is een zelfstandig operationsproduct. Zij observeert Plenora via onafhankelijke

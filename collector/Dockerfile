@@ -6,11 +6,12 @@ COPY --chown=collector:collector src ./src
 COPY --chown=collector:collector pyproject.toml ./
 
 FROM base AS development
-RUN pip install --no-cache-dir "pytest>=8.3,<9" "ruff>=0.9,<1"
+RUN pip install --no-cache-dir "pytest>=8.3,<9" "ruff>=0.9,<1" "psycopg[binary]>=3.2,<4"
 COPY --chown=collector:collector tests ./tests
 USER collector
 CMD ["python", "-m", "src.runner"]
 
 FROM base AS production
+RUN pip install --no-cache-dir "psycopg[binary]>=3.2,<4"
 USER collector
 CMD ["python", "-m", "src.runner"]

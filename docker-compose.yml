@@ -78,6 +78,11 @@ services:
       COCKPIT_WEB_URL: https://pilot.plenora.nl/
       COCKPIT_HEALTH_URL: https://pilot.plenora.nl/health/
       COCKPIT_BOUNDARY_URL: http://observer:8080
+      COCKPIT_OBSERVER_TOKEN: ${OBSERVER_TOKEN:-replace_with_a_separate_32_character_observer_token}
+      COCKPIT_PROBE_PROFILE: development
+      COCKPIT_BACKUP_STATUS_PATH: /backup/status.json
+      COCKPIT_MAIL_INTEGRATION_ENABLED: "true"
+      PLENORA_MONITOR_DATABASE_URL: postgresql://fixture:fixture@fixture/fixture
       COCKPIT_POLL_INTERVAL_SECONDS: 60
       PYTEST_ADDOPTS: -q -o cache_dir=/tmp/pytest-cache
       RUFF_CACHE_DIR: /tmp/ruff-cache
@@ -103,15 +108,18 @@ services:
 
   observer:
     build:
-      context: ./observer
+      context: .
+      dockerfile: observer/Dockerfile
       target: development
     volumes:
       - ./observer/fixtures:/fixtures:ro
     environment:
+      OBSERVER_MODE: fixture
+      OBSERVER_TOKEN: ${OBSERVER_TOKEN:-replace_with_a_separate_32_character_observer_token}
       PYTEST_ADDOPTS: -q -o cache_dir=/tmp/pytest-cache
       RUFF_CACHE_DIR: /tmp/ruff-cache
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/v1/services', timeout=2)"]
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
       interval: 10s
       timeout: 5s
       retries: 5

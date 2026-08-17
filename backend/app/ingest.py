@@ -30,6 +30,14 @@ ALLOWED_SIGNALS = {
     "backup.success_age_seconds",
     "host.uptime_seconds",
     "host.load_1m",
+    "host.load_5m",
+    "host.load_15m",
+    "disk.root.used_bytes",
+    "disk.root.free_bytes",
+    "disk.root.inode_used_percent",
+    "disk.backup.used_bytes",
+    "disk.backup.free_bytes",
+    "disk.backup.inode_used_percent",
     "disk.root.used_percent",
     "disk.root.inodes_used_percent",
     "disk.backup.used_percent",
@@ -52,12 +60,14 @@ ALLOWED_SIGNALS = {
     "service.restart_count",
     "service.uptime_seconds",
     "service.release_state",
+    "service.started_at",
+    "service.image_identifier",
     "collector.sequence",
     "collector.status",
 }
 TEXT_VALUES = {
     "mail.provider_state": {"configured", "missing"},
-    "service.health": {"healthy", "unhealthy", "none"},
+    "service.health": {"healthy", "unhealthy", "starting", "none"},
     "service.release_state": {"current", "unknown"},
     "collector.status": {"online"},
 }
@@ -103,12 +113,20 @@ class ObservationBody(BaseModel):
                 raise ValueError("backup id is not safe")
             elif signal == "backup.git_commit" and not re.fullmatch(r"[0-9a-f]{7,64}", value):
                 raise ValueError("git commit is not safe")
+            elif signal == "service.started_at":
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            elif signal == "service.image_identifier" and not re.fullmatch(
+                r"sha256:[0-9a-f]{16}", value
+            ):
+                raise ValueError("service image identifier is not safe")
             elif signal not in {
                 "backup.last_attempt_at",
                 "backup.last_success_at",
                 "backup.status",
                 "backup.backup_id",
                 "backup.git_commit",
+                "service.started_at",
+                "service.image_identifier",
             } and value not in TEXT_VALUES.get(signal, set()):
                 raise ValueError("text value is not allowlisted")
         return value

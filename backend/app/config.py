@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     login_rate_limit: int = 5
     login_rate_window_seconds: int = 900
     infrastructure_mode: str = "live"
+    release: str = "development"
 
     @model_validator(mode="after")
     def production_safety(self) -> "Settings":
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
                 raise ValueError("Secure cookies are mandatory in production")
             if any(not value.startswith("https://") for value in self.cors_origins):
                 raise ValueError("Production CORS origins must use HTTPS")
+            if not self.cors_origins:
+                raise ValueError("Production requires an explicit HTTPS origin")
+            if self.infrastructure_mode == "fixture":
+                raise ValueError("Fixture infrastructure is forbidden in production")
         if "*" in self.cors_origins or "*" in self.hosts:
             raise ValueError("Wildcard origins and hosts are not allowed")
         if self.infrastructure_mode not in {"live", "fixture"}:

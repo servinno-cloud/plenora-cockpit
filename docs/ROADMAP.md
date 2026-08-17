@@ -1,5 +1,9 @@
 # Roadmap
 
+Sprint 3 Real VPS Integration is deploymentklaar. Operationeel groen wacht op de latere echte VPS-test;
+deze sprint voert geen deployment, DNS-mutatie of Caddy-reload uit.
+De definitieve productierichting is VPS-1 PUSH naar VPS-2 ingest; er is geen inbound observer-API.
+
 Sprint 2 Infrastructure Visibility breidt de observe-only slice uit met Database-, Mail- en
 Services-contracten. Lokaal zijn dit veilige fixtures; echte Mail-integratie wacht op het expliciete
 Plenora-contract en gebruikt geen brede databasefallback.

@@ -34,7 +34,11 @@ def login(client):
 
 
 def test_health_checks_database(client):
-    assert client.get("/health").json() == {"status": "healthy", "database": "up"}
+    assert client.get("/health").json() == {
+        "status": "healthy",
+        "database": "up",
+        "release": "development",
+    }
 
 
 def test_product_code_is_unique(db):

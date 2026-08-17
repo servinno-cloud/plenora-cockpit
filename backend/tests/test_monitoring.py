@@ -80,6 +80,22 @@ def payload(
     }
 
 
+def test_two_collector_identities_have_independent_sequences(client, db):
+    environment, first = setup_monitoring(db)
+    second = Collector(
+        id=uuid.uuid4(), environment_id=environment.id, name="external-vps2",
+        secret_hash=hashlib.sha256(b"second-collector-secret").hexdigest(),
+    )
+    db.add(second)
+    db.commit()
+    first_response = post(client, environment, payload(environment, first, sequence=1),
+                          secret="collector-test-secret")
+    second_response = post(client, environment, payload(environment, second, sequence=1),
+                           secret="second-collector-secret")
+    assert first_response.status_code == 202
+    assert second_response.status_code == 202
+
+
 def post(client, environment, body, secret="collector-test-secret"):
     return client.post(
         f"/ingest/v1/environments/{environment.id}/snapshots",

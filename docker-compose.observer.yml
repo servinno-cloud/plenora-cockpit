@@ -1,0 +1,52 @@
+name: plenora-cockpit-observer
+
+services:
+  plenora-observer:
+    build:
+      context: .
+      dockerfile: observer/Dockerfile
+      target: publisher
+    environment:
+      PLENORA_OBSERVER_ID: ${PLENORA_OBSERVER_ID:?required}
+      PLENORA_OBSERVER_TOKEN: ${PLENORA_OBSERVER_TOKEN:?required}
+      COCKPIT_ENVIRONMENT_ID: ${COLLECTOR_ENVIRONMENT_ID:?required}
+      COCKPIT_INGEST_URL: ${COCKPIT_INGEST_URL:?required}
+      PLENORA_MONITOR_DATABASE_URL: ${PLENORA_MONITOR_DATABASE_URL:?required}
+      PLENORA_OBSERVER_RELEASE: ${PLENORA_OBSERVER_RELEASE:?required}
+      PLENORA_OBSERVER_POLL_SECONDS: ${PLENORA_OBSERVER_POLL_SECONDS:-60}
+      OBSERVER_MODE: production
+      OBSERVER_HOST_STATUS_PATH: /status/host.json
+      OBSERVER_CONTAINER_CADDY: ${OBSERVER_CONTAINER_CADDY:?required}
+      OBSERVER_CONTAINER_FRONTEND: ${OBSERVER_CONTAINER_FRONTEND:?required}
+      OBSERVER_CONTAINER_BACKEND: ${OBSERVER_CONTAINER_BACKEND:?required}
+      OBSERVER_CONTAINER_DB: ${OBSERVER_CONTAINER_DB:?required}
+      OBSERVER_CONTAINER_MAIL_WORKER: ${OBSERVER_CONTAINER_MAIL_WORKER:?required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/backups/plenora/status.json:/var/backups/plenora/status.json:ro
+      - /run/plenora-cockpit/host.json:/status/host.json:ro
+      - plenora_observer_state:/state
+    group_add: ["${DOCKER_GID:?required}"]
+    networks: [plenora, observer-egress]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; import time; p=Path('/state/state.json'); raise SystemExit(0 if p.exists() and time.time()-p.stat().st_mtime < 180 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {memory: 192M, cpus: "0.50"}
+
+networks:
+  plenora:
+    external: true
+    name: "${PLENORA_NETWORK:-plenora_default}"
+  observer-egress: {}
+
+volumes:
+  plenora_observer_state:

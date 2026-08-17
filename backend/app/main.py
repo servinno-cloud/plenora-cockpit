@@ -116,7 +116,7 @@ def health(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
     except SQLAlchemyError:
         return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "down"})
-    return {"status": "healthy", "database": "up"}
+    return {"status": "healthy", "database": "up", "release": settings.release}
 
 
 @app.get("/api/auth/csrf")
@@ -235,7 +235,14 @@ def snapshot(
     environment = db.get(Environment, environment_id)
     if not environment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Environment not found")
-    collector = db.scalar(select(Collector).where(Collector.environment_id == environment_id))
+    collectors = list(
+        db.scalars(select(Collector).where(Collector.environment_id == environment_id))
+    )
+    collector = max(
+        collectors,
+        key=lambda item: item.last_seen_at.timestamp() if item.last_seen_at else 0,
+        default=None,
+    )
     observations = list(
         db.scalars(
             select(Observation)
@@ -294,6 +301,7 @@ def snapshot(
                 if collector and collector.last_seen_at
                 else None
             ),
+            "identities": len(collectors),
         },
         "observed_at": observations[0].observed_at if observations else None,
         "observations": [

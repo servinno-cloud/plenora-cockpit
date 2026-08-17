@@ -1,5 +1,13 @@
 # Observabilitycontract
 
+Sprint 3 production gebruikt echte Web/Backup/Host/Database/Services-bronnen. Hostoutput is beperkt tot
+uptime, root/backup bytes en inodes, load averages en timestamp. Serviceoutput bevat alleen vijf vaste
+keys, running, health, restart count, started-at en gehashte image-ID. Uitgeschakelde Mail-integratie
+levert expliciet UNKNOWN met `integration_disabled`.
+
+VPS 1 pusht dit als bestaand `snapshot.v1` naar Cockpit. Observer- en externe-webcollector hebben
+afzonderlijke identities, monotone sequences en buffers; snapshot-ID en idempotency blijven ongewijzigd.
+
 ## Contractprincipes
 
 - versioned JSON, initieel `snapshot.v1`;

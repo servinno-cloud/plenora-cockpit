@@ -1,0 +1,22 @@
+cockpit.plenora.nl {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+    }
+
+    handle /api/* {
+        reverse_proxy cockpit-backend:8000
+    }
+    handle /ingest/* {
+        reverse_proxy cockpit-backend:8000
+    }
+    handle /health {
+        reverse_proxy cockpit-backend:8000
+    }
+    handle {
+        reverse_proxy cockpit-frontend:3000
+    }
+}

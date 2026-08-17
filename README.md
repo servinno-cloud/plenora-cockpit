@@ -1,5 +1,9 @@
 # Plenora Operations Cockpit
 
+Sprint 3 gebruikt een two-VPS pushmodel: de vaste Plenora observer op VPS 1 pusht authenticated
+`snapshot.v1`; Cockpit en een onafhankelijke externe webcollector draaien op VPS 2. Zie
+`docs/DEPLOYMENT.md` en `docs/VPS-INTEGRATION.md`.
+
 Plenora Operations Cockpit is een zelfstandig, read-only controlecentrum voor de technische
 gezondheid van Plenora-omgevingen. Het product observeert applicaties en infrastructuur zonder
 ervan afhankelijk te zijn om een storing te kunnen vaststellen.

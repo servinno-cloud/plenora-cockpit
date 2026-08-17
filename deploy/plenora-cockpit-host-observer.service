@@ -1,0 +1,14 @@
+[Unit]
+Description=Generate closed Plenora Cockpit host metrics
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/bash /opt/plenora-cockpit-observer/app/deploy/host-observer.sh
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/plenora-cockpit
+ReadOnlyPaths=/var/backups/plenora/status.json
+NoNewPrivileges=true

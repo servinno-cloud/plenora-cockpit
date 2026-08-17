@@ -70,7 +70,7 @@ class Environment(TimestampMixin, Base):
 class Collector(Base):
     __tablename__ = "collectors"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
-    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), unique=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), index=True)
     name: Mapped[str] = mapped_column(String(160))
     secret_hash: Mapped[str] = mapped_column(String(64))
     last_sequence: Mapped[int] = mapped_column(Integer, default=0)

@@ -6,5 +6,6 @@ export function StatusGrid({observations}:{observations:Observation[]}){
   const matches=observations.filter(item=>item.component.toLowerCase()===name.toLowerCase());
   const state=matches.length?matches.reduce((worst,item)=>rank[item.state]>rank[worst]?item.state:worst,"HEALTHY"):"UNKNOWN";
   const metrics=matches.filter(item=>["db.latency_ms","db.connections_percent","mail.queue_count","mail.failed_count","service.uptime_seconds"].includes(item.signal)).slice(0,2);
-  return <article className={`status-card state-${state.toLowerCase()}`} key={name}><div><span className="status-dot" />{state}</div><h2>{name}</h2><p>{metrics.length?metrics.map(item=>`${item.signal.split(".").at(-1)} ${item.numeric_value} ${item.unit??""}`).join(" · "):matches.length?"Technische signalen actueel":"Nog geen verse observatie"}</p></article>})}</section>
+  const disabled=matches.some(item=>item.code==="integration_disabled");
+  return <article className={`status-card state-${state.toLowerCase()}`} key={name}><div><span className="status-dot" />{state}</div><h2>{name}</h2><p>{disabled?"Integratie nog niet gekoppeld":metrics.length?metrics.map(item=>`${item.signal.split(".").at(-1)} ${item.numeric_value} ${item.unit??""}`).join(" · "):matches.length?"Technische signalen actueel":"Nog geen verse observatie"}</p></article>})}</section>
 }

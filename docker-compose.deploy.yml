@@ -1,0 +1,120 @@
+name: plenora-cockpit
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+services:
+  cockpit-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes: [cockpit_db_data:/var/lib/postgresql/data]
+    networks: [cockpit-internal]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: {memory: 512M, cpus: "1.0"}
+
+  cockpit-backend:
+    <<: *hardened
+    build:
+      context: ./backend
+      target: production
+    environment:
+      COCKPIT_ENV: production
+      COCKPIT_DATABASE_URL: ${DATABASE_URL:?required}
+      COCKPIT_SECRET_KEY: ${COCKPIT_SECRET_KEY:?required}
+      COCKPIT_ALLOWED_ORIGINS: ${COCKPIT_ALLOWED_ORIGINS:?required}
+      COCKPIT_ALLOWED_HOSTS: ${COCKPIT_ALLOWED_HOSTS:?required}
+      COCKPIT_COOKIE_SECURE: "true"
+      COCKPIT_INFRASTRUCTURE_MODE: live
+      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    depends_on:
+      cockpit-db: {condition: service_healthy}
+    networks: [cockpit-internal, caddy]
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: {memory: 384M, cpus: "1.0"}
+
+  cockpit-frontend:
+    <<: *hardened
+    build:
+      context: ./frontend
+      target: production
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ""
+        COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ""
+      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
+    depends_on:
+      cockpit-backend: {condition: service_healthy}
+    networks: [cockpit-internal, caddy]
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: {memory: 256M, cpus: "0.75"}
+
+  cockpit-collector:
+    <<: *hardened
+    build:
+      context: ./collector
+      target: production
+    environment:
+      COCKPIT_PROBE_PROFILE: external
+      COCKPIT_COLLECTOR_ID: ${COLLECTOR_ID:?required}
+      COCKPIT_ENVIRONMENT_ID: ${COLLECTOR_ENVIRONMENT_ID:?required}
+      COCKPIT_COLLECTOR_SECRET: ${COLLECTOR_TOKEN:?required}
+      COCKPIT_INGEST_URL: http://cockpit-backend:8000
+      COCKPIT_WEB_URL: ${PLENORA_PUBLIC_URL:?required}
+      COCKPIT_HEALTH_URL: ${PLENORA_HEALTH_URL:?required}
+      COCKPIT_POLL_INTERVAL_SECONDS: ${COLLECTOR_POLL_SECONDS:-60}
+      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
+    volumes:
+      - cockpit_collector_state:/state
+    depends_on:
+      cockpit-backend: {condition: service_healthy}
+    networks: [cockpit-internal, monitoring-egress]
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; import time; p=Path('/state/state.json'); raise SystemExit(0 if p.exists() and time.time()-p.stat().st_mtime < 180 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {memory: 192M, cpus: "0.50"}
+
+networks:
+  cockpit-internal: {internal: true}
+  monitoring-egress: {}
+  caddy:
+    external: true
+    name: "${CADDY_NETWORK:-caddy}"
+
+volumes:
+  cockpit_db_data:
+  cockpit_collector_state:

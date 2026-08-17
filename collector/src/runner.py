@@ -7,18 +7,26 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .probes import backup_probe, database_probe, host_probe, mail_probe, services_probe, web_probe
+from .probes import (
+    backup_probe,
+    database_probe,
+    host_probe,
+    mail_probe,
+    services_probe,
+    web_probe,
+)
 
 MAX_PENDING = 50
 
 
 def build_snapshot(config: dict[str, str], sequence: int) -> dict:
     observations = web_probe(config["web_url"], config["health_url"])
-    observations += backup_probe("/backup/status.json")
-    observations += host_probe()
-    observations += database_probe(config["boundary_url"])
-    observations += mail_probe(config["boundary_url"])
-    observations += services_probe(config["boundary_url"])
+    if config["profile"] == "development":
+        observations += backup_probe(config["backup_status_path"])
+        observations += host_probe()
+        observations += database_probe(config["boundary_url"])
+        observations += mail_probe(config["boundary_url"])
+        observations += services_probe(config["boundary_url"])
     observations += [
         {
             "target": "collector",
@@ -50,7 +58,7 @@ def build_snapshot(config: dict[str, str], sequence: int) -> dict:
         "environment_id": config["environment_id"],
         "sequence": sequence,
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "collector_version": "1.0.0",
+        "collector_version": config.get("release", "development"),
         "observations": observations,
     }
 
@@ -118,18 +126,29 @@ def run_once(config: dict[str, str], state_path: str = "/state/state.json") -> d
 
 
 def environment_config() -> dict[str, str]:
-    names = {
+    required = {
         "collector_id": "COCKPIT_COLLECTOR_ID",
         "environment_id": "COCKPIT_ENVIRONMENT_ID",
         "collector_secret": "COCKPIT_COLLECTOR_SECRET",
         "ingest_url": "COCKPIT_INGEST_URL",
         "web_url": "COCKPIT_WEB_URL",
         "health_url": "COCKPIT_HEALTH_URL",
-        "boundary_url": "COCKPIT_BOUNDARY_URL",
+        "profile": "COCKPIT_PROBE_PROFILE",
     }
-    config = {key: os.environ.get(name, "") for key, name in names.items()}
+    config = {key: os.environ.get(name, "") for key, name in required.items()}
     if any(not value for value in config.values()):
         raise RuntimeError("collector configuration incomplete")
+    if config["profile"] not in {"development", "external"}:
+        raise RuntimeError("COCKPIT_PROBE_PROFILE must be development or external")
+    if config["profile"] == "development":
+        optional = {
+            "boundary_url": "COCKPIT_BOUNDARY_URL",
+            "backup_status_path": "COCKPIT_BACKUP_STATUS_PATH",
+        }
+        config.update({key: os.environ.get(name, "") for key, name in optional.items()})
+        if any(not config[key] for key in optional):
+            raise RuntimeError("development fixture configuration incomplete")
+    config["release"] = os.environ.get("COCKPIT_RELEASE", "development")
     return config
 
 

@@ -1,5 +1,8 @@
 # Plenora integration requirements
 
+Sprint 3 operationaliseert Web, Backup, Host, Database en Services. Mail blijft in productie bewust
+uitgeschakeld; `MAIL_INTEGRATION_ENABLED=false` voorkomt fake healthy.
+
 ## Doel en grens
 
 Cockpit Sprint 2 wijzigt Plenora niet. De lokale Mail- en Services-data zijn expliciete fixtures en
@@ -29,8 +32,8 @@ als workaround. Tot dit contract bestaat blijft production Mail eerlijk `UNKNOWN
 
 ## Database monitoringrole
 
-De production collector gebruikt een afzonderlijke loginrole met alleen `CONNECT`, `pg_monitor` voor
-technische counters en expliciet `SELECT` op de technische migratieversionview. De gesloten catalogus:
+De production collector gebruikt een afzonderlijke loginrole met alleen `CONNECT` en expliciet
+`SELECT` op de technische migratietabel. De gesloten catalogus:
 
 - `SELECT current_setting('server_version_num')::int / 10000`;
 - `SELECT pg_database_size(current_database())`;
@@ -42,8 +45,8 @@ andere businessschemas. Credentials zijn hostgebonden en alleen bij de collector
 
 ## Services boundary
 
-Een host-side helper bezit als enige eventuele Docker-sockettoegang. Hij retourneert uitsluitend
-`caddy`, `frontend`, `backend`, `db` en `mail-worker` met running, health, restart count, uptime en
-een veilige release-state. Geen environment, mounts, raw config, logs of inspectpayloads. Alleen GET
-is toegestaan; exec/start/stop/restart/create/remove zijn structureel afwezig. De collector spreekt
-ditzelfde HTTP-contract, waardoor plaatsing van Cockpit op VPS 2 niets aan snapshots wijzigt.
+Een host-side publisher bezit als enige Docker-sockettoegang. Hij verzamelt uitsluitend
+`caddy`, `frontend`, `backend`, `db` en `mail-worker` met running, health, restart count, started-at en
+een gehashte image-ID. Geen environment, mounts, raw config, logs of inspectpayloads. Hij exposeert
+geen production HTTP-API en pusht uitsluitend `snapshot.v1` naar Cockpit. Exec/start/stop/restart/
+create/remove zijn structureel afwezig.

@@ -12,6 +12,9 @@ CONFIG = {
     "ingest_url": "http://backend:8000",
     "web_url": "https://example.test",
     "health_url": "https://example.test/health",
+    "backup_status_path": "/backup/status.json",
+    "boundary_url": "http://observer:8080",
+    "profile": "development",
 }
 
 

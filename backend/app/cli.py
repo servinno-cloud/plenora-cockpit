@@ -62,6 +62,7 @@ def seed_monitoring() -> None:
             ("db", "PostgreSQL", "Services"),
             ("mail-worker", "Mail worker", "Services"),
             ("collector", "Collector", "Collector"),
+            ("observer", "Plenora observer", "Observer"),
         )
         for key, name, component in targets:
             if not db.scalar(
@@ -85,6 +86,27 @@ def seed_monitoring() -> None:
                     active=True,
                 )
             )
+        observer_id = os.getenv("COCKPIT_MONITORING_OBSERVER_ID")
+        observer_secret = os.getenv("COCKPIT_MONITORING_OBSERVER_SECRET")
+        if observer_id or observer_secret:
+            if not observer_id or not observer_secret or len(observer_secret) < 32:
+                raise SystemExit("Observer identity and 32-character secret are both required")
+            identity = uuid.UUID(observer_id)
+            existing = db.get(Collector, identity)
+            observer_hash = hashlib.sha256(observer_secret.encode()).hexdigest()
+            if existing:
+                existing.secret_hash = observer_hash
+                existing.active = True
+            else:
+                db.add(
+                    Collector(
+                        id=identity,
+                        environment_id=environment.id,
+                        name="plenora-vps1-observer",
+                        secret_hash=observer_hash,
+                        active=True,
+                    )
+                )
     print("Monitoring seed ready")
 
 
