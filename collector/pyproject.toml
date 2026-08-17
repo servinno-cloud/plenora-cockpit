@@ -8,8 +8,4 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
-
-[tool.ruff.lint.per-file-ignores]
-"app/auth.py" = ["B008"]
-"app/main.py" = ["B008"]
-"app/ingest.py" = ["B008"]
+ignore = ["EXE002"]

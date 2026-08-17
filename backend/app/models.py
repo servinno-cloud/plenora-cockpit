@@ -9,10 +9,12 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +67,30 @@ class Environment(TimestampMixin, Base):
     targets: Mapped[list["Target"]] = relationship(back_populates="environment")
 
 
+class Collector(Base):
+    __tablename__ = "collectors"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"), unique=True)
+    name: Mapped[str] = mapped_column(String(160))
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    last_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class IngestSnapshot(Base):
+    __tablename__ = "ingest_snapshots"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    collector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collectors.id"))
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"))
+    sequence: Mapped[int] = mapped_column(Integer)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    observation_count: Mapped[int] = mapped_column(Integer)
+
+
 class Target(TimestampMixin, Base):
     __tablename__ = "targets"
     __table_args__ = (UniqueConstraint("environment_id", "key", name="uq_target_key"),)
@@ -82,10 +108,12 @@ class Observation(Base):
         Index("ix_observation_environment_observed", "environment_id", "observed_at"),
     )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ingest_snapshots.id"))
     environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"))
     target_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("targets.id"))
     component: Mapped[str] = mapped_column(String(80))
     code: Mapped[str] = mapped_column(String(120))
+    signal: Mapped[str] = mapped_column(String(120), default="unknown")
     state: Mapped[HealthState] = mapped_column(Enum(HealthState))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     numeric_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
@@ -97,7 +125,16 @@ class Observation(Base):
 
 class Incident(Base):
     __tablename__ = "incidents"
-    __table_args__ = (Index("ix_incident_environment_state", "environment_id", "lifecycle"),)
+    __table_args__ = (
+        Index("ix_incident_environment_state", "environment_id", "lifecycle"),
+        Index(
+            "uq_active_incident_fingerprint",
+            "fingerprint",
+            unique=True,
+            postgresql_where=text("lifecycle != 'RESOLVED'"),
+            sqlite_where=text("lifecycle != 'RESOLVED'"),
+        ),
+    )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id"))
     target_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("targets.id"))
@@ -111,6 +148,9 @@ class Incident(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    latest_observation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("observations.id"))
+    policy_version: Mapped[str] = mapped_column(String(32), default="sprint1.v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

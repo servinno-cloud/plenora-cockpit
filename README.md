@@ -4,8 +4,9 @@ Plenora Operations Cockpit is een zelfstandig, read-only controlecentrum voor de
 gezondheid van Plenora-omgevingen. Het product observeert applicaties en infrastructuur zonder
 ervan afhankelijk te zijn om een storing te kunnen vaststellen.
 
-Deze repository bevat voorlopig uitsluitend het v1-ontwerp. Er is nog geen frontend, backend,
-collector, deployment of automatische actie geïmplementeerd.
+Sprint 1 implementeert een observe-only keten voor Web, Backups en Host: vaste probes, lokaal
+begrensde buffering, gevalideerde ingest, observations, healthpolicies, incidenten, API en UI.
+Er zijn geen remediationroutes, Docker socket, SSH of productiewijzigingen.
 
 ## V1: Observe
 
@@ -59,7 +60,7 @@ plenora-cockpit/
   tests/
 ```
 
-## Sprint 0 lokale setup
+## Lokale setup
 
 Vereist: Docker Engine met Compose v2. Kopieer de placeholders en genereer een unieke secret:
 
@@ -121,11 +122,12 @@ zodat de niet-rootgebruiker geen schrijfrechten op de applicatiemap nodig heeft.
 ```sh
 docker compose exec backend pytest
 docker compose exec backend ruff check .
+docker compose exec collector pytest
+docker compose exec collector ruff check .
 docker compose exec frontend pnpm lint
 docker compose exec frontend pnpm typecheck
 docker compose exec frontend pnpm test -- --run
 docker compose exec frontend pnpm build
-PYTHONPATH=collector python -m pytest collector/tests
 docker compose config --quiet
 git diff --check
 ```
@@ -135,12 +137,11 @@ git diff --check
 ```text
 plenora-cockpit/
   backend/       FastAPI, SQLAlchemy, Alembic, auth en tests
-  frontend/      Next.js shell, login, UNKNOWN-dashboard en tests
-  collector/     snapshot/types/mTLS interfaces en lege fixture
+  frontend/      Next.js login en live read-only monitoringdashboard
+  collector/     vaste Web-, Backup- en Hostprobes met begrensde lokale buffer
   docs/          goedgekeurde architectuurcontracten
   docker-compose.yml
   .env.example
 ```
 
-Sprint 0 bevat bewust nog geen probes, Docker socket, incidentengine, agents, remediation, Caddy of
-productiedeployment.
+De collector heeft geen generieke shell, Docker socket, SSH of actie-interface.

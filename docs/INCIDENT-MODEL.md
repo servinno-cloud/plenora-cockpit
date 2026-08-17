@@ -63,17 +63,33 @@ constraint/transactionele lock. Iedere nieuwe falende evaluatie verhoogt `occurr
 
 ## Open- en herstelpolicies
 
-Standaard anti-flapregels:
+### Actuele Sprint 1-policy
 
-- CRITICAL availability: open na 2 opeenvolgende failures binnen 90 seconden;
-- threshold WARNING: open na 2 evaluaties;
-- backup age/disk: direct openen zodra duurzame metriek threshold passeert;
-- UNKNOWN: apart incident na freshnessgrens, niet dezelfde code als component failure;
-- resolve na 3 opeenvolgende gezonde observaties en minimaal 2 minuten herstel;
-- flapping detectie bij 4 statewissels in 15 minuten: incident blijft open als WARNING `signal_flapping`.
+Sprint 1 gebruikt voor de geïmplementeerde Web-, Backup- en Hostsignalen de volgende deterministische
+anti-flapregels:
 
-Policies zijn configureerbaar per signal definition/environment, met globale veilige defaults. Geen
-klantnamen of klantlogica in policycode.
+- de eerste falende evaluatie opent nog geen incident;
+- de tweede opeenvolgende falende evaluatie opent exact één incident met lifecycle `OPEN`;
+- verdere identieke failures werken hetzelfde incident bij en behouden ID en fingerprint;
+- een severitywijziging, bijvoorbeeld van WARNING naar CRITICAL, escaleert hetzelfde incident;
+- de eerste opeenvolgende gezonde evaluatie laat het incident `OPEN`;
+- de tweede opeenvolgende gezonde evaluatie zet hetzelfde incident op `RESOLVED`;
+- `first_seen_at` blijft bij openen en escaleren de timestamp van de eerste failure;
+- UNKNOWN-observations tijdens bootstrap worden wel opgeslagen, maar openen geen incident en
+  veroorzaken daardoor geen incidentstorm.
+
+De huidige Sprint 1-policy is daarmee **twee opeenvolgende failures om te openen en twee
+opeenvolgende healthy observations om op te lossen**. Policies bevatten een versie zodat deze
+beslissingen reproduceerbaar blijven. Geen klantnamen of klantlogica staan in policycode.
+
+### Toekomstige configureerbare hardening
+
+Een conservatievere production-policy, zoals oplossen na drie opeenvolgende healthy observations én
+minimaal twee minuten duurzaam herstel, is mogelijke toekomstige hardening. Hetzelfde geldt voor
+signaalspecifieke directe opening van duurzame backup-/diskthresholds, een apart incident na een
+UNKNOWN-freshnessgrens en flappingdetectie bij vier statewissels in vijftien minuten. Deze regels zijn
+niet het huidige Sprint 1-gedrag en mogen pas als expliciet configureerbare, versioned policy worden
+geactiveerd.
 
 ## Severitycorrelatie
 
@@ -133,4 +149,3 @@ Incident evaluation en upsert gebeuren in één databasetransactie. De fingerpri
 met een unieke partial index beschermd. Snapshot ingestion is idempotent op `snapshot_id`; herhaalde
 delivery maakt geen extra observations of incidents. Policies dragen een versie zodat historische
 beslissingen reproduceerbaar blijven.
-

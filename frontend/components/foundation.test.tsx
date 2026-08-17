@@ -13,6 +13,6 @@ test("login form exposes secure operator state", () => {
 test("authenticated shell has navigation", () => {
   render(<AppShell><span>Content</span></AppShell>); expect(screen.getByText("Overzicht")).toBeInTheDocument();
 });
-test("all foundation cards are explicitly unknown", () => {
-  render(<StatusGrid />); expect(screen.getAllByText("Nog geen observaties")).toHaveLength(6);
+test("monitoring cards are explicitly unknown without data", () => {
+  render(<StatusGrid observations={[]} />); expect(screen.getAllByText("Nog geen verse observatie")).toHaveLength(6);
 });

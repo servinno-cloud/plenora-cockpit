@@ -28,6 +28,7 @@ from .auth import (
 )
 from .config import Settings, get_settings
 from .database import get_db
+from .ingest import router as ingest_router
 from .logging import configure_logging
 from .models import (
     AuditEvent,
@@ -43,6 +44,7 @@ configure_logging()
 logger = logging.getLogger("cockpit.api")
 settings = get_settings()
 app = FastAPI(title="Plenora Operations Cockpit", version="0.1.0", docs_url=None, redoc_url=None)
+app.include_router(ingest_router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.hosts)
 if settings.cors_origins:
     app.add_middleware(
@@ -239,15 +241,41 @@ def snapshot(
             .limit(100)
         )
     )
+    latest = {}
+    for item in observations:
+        latest.setdefault(item.signal, item)
+    current = list(latest.values())
+    order = {"HEALTHY": 0, "DEGRADED": 1, "WARNING": 2, "UNKNOWN": 3, "CRITICAL": 4}
+    now = datetime.now(UTC)
+    stale = {
+        item.id: now
+        - (
+            item.observed_at.replace(tzinfo=UTC)
+            if item.observed_at.tzinfo is None
+            else item.observed_at
+        )
+        > timedelta(minutes=5)
+        for item in current
+    }
+    overall = (
+        "UNKNOWN"
+        if any(stale.values())
+        else max(
+            (item.state.value for item in current),
+            key=lambda value: order[value],
+            default="UNKNOWN",
+        )
+    )
     return {
         "environment_id": environment.id,
-        "overall_state": "UNKNOWN" if not observations else observations[0].state.value,
+        "overall_state": overall,
         "observed_at": observations[0].observed_at if observations else None,
         "observations": [
             {
                 "id": item.id,
                 "target_id": item.target_id,
                 "component": item.component,
+                "signal": item.signal,
                 "code": item.code,
                 "state": item.state.value,
                 "observed_at": item.observed_at,
@@ -255,8 +283,9 @@ def snapshot(
                 "unit": item.unit,
                 "message": item.message,
                 "source": item.source,
+                "stale": stale[item.id],
             }
-            for item in observations
+            for item in current
         ],
     }
 
@@ -280,4 +309,36 @@ def incidents(_: Operator = Depends(current_operator), db: Session = Depends(get
             "resolved_at": item.resolved_at,
         }
         for item in db.scalars(select(Incident).order_by(Incident.last_seen_at.desc()).limit(100))
+    ]
+
+
+@app.get("/api/environments/{environment_id}/observations")
+def observation_history(
+    environment_id: uuid.UUID,
+    _: Operator = Depends(current_operator),
+    db: Session = Depends(get_db),
+):
+    if not db.get(Environment, environment_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Environment not found")
+    items = db.scalars(
+        select(Observation)
+        .where(Observation.environment_id == environment_id)
+        .order_by(Observation.observed_at.desc())
+        .limit(500)
+    )
+    return [
+        {
+            "id": item.id,
+            "target_id": item.target_id,
+            "component": item.component,
+            "signal": item.signal,
+            "code": item.code,
+            "state": item.state.value,
+            "observed_at": item.observed_at,
+            "numeric_value": item.numeric_value,
+            "unit": item.unit,
+            "message": item.message,
+            "source": item.source,
+        }
+        for item in items
     ]

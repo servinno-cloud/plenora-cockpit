@@ -1,0 +1,10 @@
+{
+  "last_attempt_at": "2026-08-17T14:00:00Z",
+  "last_success_at": "2026-08-17T14:00:00Z",
+  "status": "success",
+  "backup_id": "local-safe-fixture",
+  "database_bytes": 1048576,
+  "media_bytes": 2097152,
+  "checksum_verified": true,
+  "git_commit": "2eb77dc"
+}
