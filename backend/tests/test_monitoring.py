@@ -23,7 +23,14 @@ def setup_monitoring(db):
     environment = Environment(product_id=product.id, code="production", name="Production")
     db.add(environment)
     db.flush()
-    for key, name in (("web", "Web"), ("backups", "Backups"), ("host", "Host")):
+    for key, name in (
+        ("web", "Web"),
+        ("backups", "Backups"),
+        ("host", "Host"),
+        ("database", "Database"),
+        ("mail", "Mail"),
+        ("backend", "Backend"),
+    ):
         db.add(Target(environment_id=environment.id, key=key, name=name, component=name))
     collector = Collector(
         id=uuid.uuid4(),
@@ -45,6 +52,8 @@ def payload(
     signal="https.status_code",
     state="HEALTHY",
     observed_at=None,
+    target="web",
+    source="external_https",
 ):
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     observed = (observed_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z")
@@ -58,9 +67,9 @@ def payload(
         "collector_version": "1.0.0",
         "observations": [
             {
-                "target": "web",
+                "target": target,
                 "signal": signal,
-                "source": "external_https",
+                "source": source,
                 "observed_at": observed,
                 "state": state,
                 "code": "probe_result",
@@ -183,6 +192,39 @@ def test_unknown_bootstrap_does_not_create_incidents(client, db):
     assert db.scalar(select(func.count()).select_from(Incident)) == 0
 
 
+def test_service_signal_reuses_sprint1_incident_engine(client, db):
+    environment, collector = setup_monitoring(db)
+    for sequence in (1, 2):
+        body = payload(
+            environment,
+            collector,
+            sequence,
+            "unhealthy",
+            signal="service.health",
+            state="CRITICAL",
+            target="backend",
+            source="service_boundary",
+        )
+        assert post(client, environment, body).status_code == 202
+    incident = db.scalar(select(Incident))
+    assert incident and incident.code == "service_unhealthy"
+    incident_id = incident.id
+    for sequence in (3, 4):
+        body = payload(
+            environment,
+            collector,
+            sequence,
+            "healthy",
+            signal="service.health",
+            state="HEALTHY",
+            target="backend",
+            source="service_boundary",
+        )
+        assert post(client, environment, body).status_code == 202
+    db.expire_all()
+    assert db.get(Incident, incident_id).lifecycle == IncidentLifecycle.RESOLVED
+
+
 def test_operator_api_exposes_health_and_history(client, db):
     environment, collector = setup_monitoring(db)
     for sequence in (1, 2):
@@ -197,6 +239,23 @@ def test_operator_api_exposes_health_and_history(client, db):
     history = client.get(f"/api/environments/{environment.id}/observations").json()
     assert len(history) == 2
     assert client.get("/api/incidents").json()[0]["lifecycle"] == "OPEN"
+
+
+def test_stale_healthy_signal_is_unknown(client, db):
+    environment, collector = setup_monitoring(db)
+    body = payload(
+        environment,
+        collector,
+        1,
+        200,
+        observed_at=datetime.now(UTC) - timedelta(minutes=6),
+    )
+    assert post(client, environment, body).status_code == 202
+    owner(db)
+    assert login(client).status_code == 200
+    snapshot = client.get(f"/api/environments/{environment.id}/snapshot").json()
+    assert snapshot["overall_state"] == "UNKNOWN"
+    assert snapshot["observations"][0]["stale"] is True
 
 
 def test_ingest_is_idempotent_and_replay_protected(client, db):

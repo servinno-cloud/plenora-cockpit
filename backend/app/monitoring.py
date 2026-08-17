@@ -14,6 +14,14 @@ TITLES = {
     "web_unhealthy": "Web endpoint is niet gezond",
     "backup_unhealthy": "Backupstatus vereist aandacht",
     "host_capacity": "Hostcapaciteit vereist aandacht",
+    "db_unreachable": "Database is niet bereikbaar",
+    "db_performance": "Databaseprestaties vereisen aandacht",
+    "db_connections": "Databaseverbindingen vereisen aandacht",
+    "db_migration_mismatch": "Databasemigratie wijkt af",
+    "mail_worker_down": "Mailworker is niet gezond",
+    "mail_delivery_risk": "Mailqueue vereist aandacht",
+    "mail_provider_missing": "Mailprovider ontbreekt",
+    "service_unhealthy": "Service is niet gezond",
 }
 
 
@@ -79,6 +87,22 @@ def incident_code(signal: str) -> str | None:
         return "backup_unhealthy"
     if signal.startswith("disk."):
         return "host_capacity"
+    if signal == "db.reachable":
+        return "db_unreachable"
+    if signal == "db.latency_ms":
+        return "db_performance"
+    if signal == "db.connections_percent":
+        return "db_connections"
+    if signal == "db.migration_current":
+        return "db_migration_mismatch"
+    if signal == "mail.worker_running":
+        return "mail_worker_down"
+    if signal == "mail.provider_state":
+        return "mail_provider_missing"
+    if signal.startswith("mail."):
+        return "mail_delivery_risk"
+    if signal.startswith("service."):
+        return "service_unhealthy"
     return None
 
 

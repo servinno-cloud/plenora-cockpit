@@ -111,6 +111,12 @@ dezelfde VPS detecteert geen volledig host- of netwerkverlies.
 
 ## Collectorarchitectuur en Docker
 
+Sprint 2 gebruikt lokaal een afzonderlijke fixture-observer zonder Docker socket. In productie wordt
+dit contract ingevuld door een hardened host-side helper; collector, API en UI krijgen de socket
+nooit. Databaseobservatie gebruikt een dedicated technische monitorrole en gesloten querycatalogus.
+Mail gebruikt uitsluitend het privacyarme contract uit `PLENORA-INTEGRATION.md`; brede databaselezing
+is geen fallback. De contractgrens blijft identiek wanneer Cockpit naar VPS 2 verhuist.
+
 V1-keuze: een root-owned host-side collector met strikt vaste probes. De Cockpit web- en
 API-containers krijgen nooit `/var/run/docker.sock`.
 

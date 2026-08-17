@@ -1,5 +1,9 @@
 # Roadmap
 
+Sprint 2 Infrastructure Visibility breidt de observe-only slice uit met Database-, Mail- en
+Services-contracten. Lokaal zijn dit veilige fixtures; echte Mail-integratie wacht op het expliciete
+Plenora-contract en gebruikt geen brede databasefallback.
+
 ## Huidige stand — Sprint 0 Foundation
 
 De technische foundation is geïmplementeerd: monorepo, FastAPI/SQLAlchemy/Alembic, PostgreSQL Compose,

@@ -1,0 +1,1 @@
+.services-panel{margin-top:16px}.services-list{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.service-row{padding:10px;border:1px solid var(--line);border-radius:8px}.service-row span{display:block;margin-top:4px;color:var(--muted);font-size:12px;font-weight:750;text-transform:uppercase}@media(max-width:760px){.services-list{grid-template-columns:1fr 1fr}}

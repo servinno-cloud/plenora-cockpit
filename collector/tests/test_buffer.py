@@ -38,12 +38,8 @@ def test_buffer_caps_at_50_and_preserves_oldest(monkeypatch, tmp_path):
             }
         )
     )
-    monkeypatch.setattr(
-        runner, "build_snapshot", lambda config, sequence: snapshot(sequence)
-    )
-    monkeypatch.setattr(
-        runner, "send", lambda item, config: (_ for _ in ()).throw(OSError())
-    )
+    monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
+    monkeypatch.setattr(runner, "send", lambda item, config: (_ for _ in ()).throw(OSError()))
     state = runner.run_once(CONFIG, str(state_path))
     assert len(state["pending"]) == 50
     assert [item["sequence"] for item in state["pending"]] == list(range(1, 51))
@@ -51,19 +47,13 @@ def test_buffer_caps_at_50_and_preserves_oldest(monkeypatch, tmp_path):
 
 def test_retry_keeps_identity_sequence_and_restart_progress(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
-    monkeypatch.setattr(
-        runner, "build_snapshot", lambda config, sequence: snapshot(sequence)
-    )
-    monkeypatch.setattr(
-        runner, "send", lambda item, config: (_ for _ in ()).throw(OSError())
-    )
+    monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
+    monkeypatch.setattr(runner, "send", lambda item, config: (_ for _ in ()).throw(OSError()))
     first = runner.run_once(CONFIG, str(state_path))
     assert first["pending"] == [snapshot(1)]
 
     delivered = []
-    monkeypatch.setattr(
-        runner, "send", lambda item, config: delivered.append(item.copy())
-    )
+    monkeypatch.setattr(runner, "send", lambda item, config: delivered.append(item.copy()))
     second = runner.run_once(CONFIG, str(state_path))
     assert [(item["snapshot_id"], item["sequence"]) for item in delivered] == [
         ("snapshot-1", 1),
@@ -73,17 +63,13 @@ def test_retry_keeps_identity_sequence_and_restart_progress(monkeypatch, tmp_pat
 
     delivered.clear()
     restarted = runner.run_once(CONFIG, str(state_path))
-    assert [(item["snapshot_id"], item["sequence"]) for item in delivered] == [
-        ("snapshot-3", 3)
-    ]
+    assert [(item["snapshot_id"], item["sequence"]) for item in delivered] == [("snapshot-3", 3)]
     assert restarted == {"sequence": 3, "pending": []}
 
 
 def test_success_removes_each_item_durably(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
-    monkeypatch.setattr(
-        runner, "build_snapshot", lambda config, sequence: snapshot(sequence)
-    )
+    monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
     monkeypatch.setattr(runner, "send", lambda item, config: None)
     state = runner.run_once(CONFIG, str(state_path))
     persisted = json.loads(Path(state_path).read_text())
@@ -93,16 +79,12 @@ def test_success_removes_each_item_durably(monkeypatch, tmp_path):
 def test_permanent_rejection_does_not_block_new_snapshots(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps({"sequence": 0, "pending": [snapshot(1)]}))
-    monkeypatch.setattr(
-        runner, "build_snapshot", lambda config, sequence: snapshot(sequence)
-    )
+    monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
     delivered = []
 
     def reject_old(item, config):
         if item["sequence"] == 1:
-            raise urllib.error.HTTPError(
-                "http://ingest", 400, "stale", {}, io.BytesIO()
-            )
+            raise urllib.error.HTTPError("http://ingest", 400, "stale", {}, io.BytesIO())
         delivered.append(item["sequence"])
 
     monkeypatch.setattr(runner, "send", reject_old)

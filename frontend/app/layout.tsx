@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import "./infrastructure.css";
 
 export const metadata: Metadata = { title: "Plenora Operations", robots: "noindex, nofollow" };
 

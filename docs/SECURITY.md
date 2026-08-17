@@ -56,6 +56,11 @@ ingeschakeld om het latere VPS-2-pad nu al te testen.
 
 ## Collector least privilege
 
+Sprint 2 concretiseert deze grens met drie gesloten bronnen: een databasequerycatalogus zonder
+runtime-SQL, een Mail-contract zonder persoonsgegevens en een Services-contract met vijf vaste
+servicekeys. De lokale observer is uitsluitend een fixture, heeft een read-only root filesystem,
+geen Docker socket en alleen GET-routes. Productie mag de fixture nooit als fallback gebruiken.
+
 De collector heeft geen generieke shell/exec API. Probes zijn compile-time of lokaal root-owned
 geconfigureerd en accepteren alleen bekende identifiers.
 
@@ -154,4 +159,3 @@ V1 registreert alleen `observe.*`; requests voor `restart.service`, `deploy.stag
 | Cockpitaccount overgenomen | Argon2id, rate limit, secure sessions, MFA-ready | MFA moet vóór brede operatorgroep worden geactiveerd |
 | Incident flood/datastoregroei | Deduplicatie, rate limits, retentie en aggregatie | Nieuwe signalen moeten cardinaliteitsbudget respecteren |
 | Cockpitdatabase verloren | Eigen backups en later off-site restoretests | Niet onderdeel van Plenora Backup v1 |
-

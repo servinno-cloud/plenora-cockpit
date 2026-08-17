@@ -117,6 +117,7 @@ class Observation(Base):
     state: Mapped[HealthState] = mapped_column(Enum(HealthState))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     numeric_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    text_value: Mapped[str | None] = mapped_column(String(80))
     unit: Mapped[str | None] = mapped_column(String(32))
     message: Mapped[str | None] = mapped_column(String(240))
     source: Mapped[str] = mapped_column(String(80))

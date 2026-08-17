@@ -76,6 +76,13 @@ zichtbaar met `stale=true`; na de freshnessgrens wordt het signaal UNKNOWN.
 
 ## Vereiste signalen
 
+Sprint 2 behoudt `snapshot.v1` en voegt gesloten signalen toe: `db.reachable`, `db.version_major`,
+`db.latency_ms`, `db.size_bytes`, `db.connections_percent`, `db.migration_current`, de privacyarme
+`mail.*` counts/states, `service.running`, `service.health`, `service.restart_count`,
+`service.uptime_seconds`, `service.release_state`, `collector.sequence` en `collector.status`.
+Tekstwaarden zijn beperkte enums; onbekende signalen, services, bronnen en tekstwaarden worden
+geweigerd.
+
 ### Externe web/backend
 
 | Signal | Waarden | Standaard policy |
@@ -197,4 +204,3 @@ is WARNING en >5 minuten CRITICAL, behalve tijdens geconfigureerd onderhoud.
 Toegestane dimensies: environment, target, signal, source en een begrensde service-enum. Verboden zijn
 person-ID, e-mail, request-ID uit Plenora, mail-ID en vrije padnamen. Nieuwe signalen vereisen contract-,
 privacy-, threshold- en retentiereview.
-

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 28_800
     login_rate_limit: int = 5
     login_rate_window_seconds: int = 900
+    infrastructure_mode: str = "live"
 
     @model_validator(mode="after")
     def production_safety(self) -> "Settings":
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production CORS origins must use HTTPS")
         if "*" in self.cors_origins or "*" in self.hosts:
             raise ValueError("Wildcard origins and hosts are not allowed")
+        if self.infrastructure_mode not in {"live", "fixture"}:
+            raise ValueError("COCKPIT_INFRASTRUCTURE_MODE must be live or fixture")
         return self
 
     @property

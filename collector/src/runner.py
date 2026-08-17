@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .probes import backup_probe, host_probe, web_probe
+from .probes import backup_probe, database_probe, host_probe, mail_probe, services_probe, web_probe
 
 MAX_PENDING = 50
 
@@ -16,6 +16,33 @@ def build_snapshot(config: dict[str, str], sequence: int) -> dict:
     observations = web_probe(config["web_url"], config["health_url"])
     observations += backup_probe("/backup/status.json")
     observations += host_probe()
+    observations += database_probe(config["boundary_url"])
+    observations += mail_probe(config["boundary_url"])
+    observations += services_probe(config["boundary_url"])
+    observations += [
+        {
+            "target": "collector",
+            "signal": "collector.sequence",
+            "source": "collector_self",
+            "observed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "state": "HEALTHY",
+            "code": "probe_ok",
+            "message": "Meting uitgevoerd",
+            "value": sequence,
+            "unit": None,
+        },
+        {
+            "target": "collector",
+            "signal": "collector.status",
+            "source": "collector_self",
+            "observed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "state": "HEALTHY",
+            "code": "probe_ok",
+            "message": "Meting uitgevoerd",
+            "value": "online",
+            "unit": None,
+        },
+    ]
     return {
         "schema": "snapshot.v1",
         "snapshot_id": str(uuid.uuid4()),
@@ -53,9 +80,7 @@ def load_state(state_path: Path) -> dict:
     if not state_path.exists():
         return {"sequence": 0, "pending": []}
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    if not isinstance(state.get("sequence"), int) or not isinstance(
-        state.get("pending"), list
-    ):
+    if not isinstance(state.get("sequence"), int) or not isinstance(state.get("pending"), list):
         raise TypeError("invalid collector state")
     return state
 
@@ -100,6 +125,7 @@ def environment_config() -> dict[str, str]:
         "ingest_url": "COCKPIT_INGEST_URL",
         "web_url": "COCKPIT_WEB_URL",
         "health_url": "COCKPIT_HEALTH_URL",
+        "boundary_url": "COCKPIT_BOUNDARY_URL",
     }
     config = {key: os.environ.get(name, "") for key, name in names.items()}
     if any(not value for value in config.values()):

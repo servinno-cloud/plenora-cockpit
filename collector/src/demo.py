@@ -4,9 +4,7 @@ from uuid import uuid4
 from .contracts import Snapshot
 
 
-def empty_snapshot(
-    collector_id: str, environment_id: str, sequence: int = 1
-) -> Snapshot:
+def empty_snapshot(collector_id: str, environment_id: str, sequence: int = 1) -> Snapshot:
     return {
         "schema": "snapshot.v1",
         "snapshot_id": str(uuid4()),

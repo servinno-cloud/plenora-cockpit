@@ -8,6 +8,10 @@ Sprint 1 implementeert een observe-only keten voor Web, Backups en Host: vaste p
 begrensde buffering, gevalideerde ingest, observations, healthpolicies, incidenten, API en UI.
 Er zijn geen remediationroutes, Docker socket, SSH of productiewijzigingen.
 
+Sprint 2 voegt Database-, Mail- en Services-visibility toe via gesloten read-only contracten. De
+lokale observer bevat uitsluitend fixtures en heeft geen Docker socket; de UI labelt deze modus.
+Zie `docs/PLENORA-INTEGRATION.md` voor de vereiste echte Plenora/VPS-contracten.
+
 ## V1: Observe
 
 V1 toont voor één of meer generiek gemodelleerde environments:

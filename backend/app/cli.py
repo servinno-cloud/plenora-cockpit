@@ -50,11 +50,26 @@ def seed_monitoring() -> None:
             )
             db.add(environment)
             db.flush()
-        for key, name in (("web", "Web"), ("backups", "Backups"), ("host", "Host")):
+        targets = (
+            ("web", "Web", "Web"),
+            ("backups", "Backups", "Backups"),
+            ("host", "Host", "Host"),
+            ("database", "Database", "Database"),
+            ("mail", "Mail", "Mail"),
+            ("backend", "Backend", "Backend"),
+            ("caddy", "Caddy", "Services"),
+            ("frontend", "Frontend", "Services"),
+            ("db", "PostgreSQL", "Services"),
+            ("mail-worker", "Mail worker", "Services"),
+            ("collector", "Collector", "Collector"),
+        )
+        for key, name, component in targets:
             if not db.scalar(
                 select(Target).where(Target.environment_id == environment.id, Target.key == key)
             ):
-                db.add(Target(environment_id=environment.id, key=key, name=name, component=name))
+                db.add(
+                    Target(environment_id=environment.id, key=key, name=name, component=component)
+                )
         collector = db.get(Collector, collector_id)
         secret_hash = hashlib.sha256(secret.encode()).hexdigest()
         if collector:

@@ -9,7 +9,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 FROM base AS development
-RUN chown node:node /app
+RUN chown node:node /app /app/next-env.d.ts
 USER node
 CMD ["pnpm", "dev", "--hostname", "0.0.0.0"]
 

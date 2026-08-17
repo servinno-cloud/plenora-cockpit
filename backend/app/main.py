@@ -32,12 +32,14 @@ from .ingest import router as ingest_router
 from .logging import configure_logging
 from .models import (
     AuditEvent,
+    Collector,
     Environment,
     Incident,
     Observation,
     Operator,
     OperatorSession,
     Product,
+    Target,
 )
 
 configure_logging()
@@ -233,6 +235,7 @@ def snapshot(
     environment = db.get(Environment, environment_id)
     if not environment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Environment not found")
+    collector = db.scalar(select(Collector).where(Collector.environment_id == environment_id))
     observations = list(
         db.scalars(
             select(Observation)
@@ -241,9 +244,13 @@ def snapshot(
             .limit(100)
         )
     )
+    targets = {
+        item.id: item.key
+        for item in db.scalars(select(Target).where(Target.environment_id == environment_id))
+    }
     latest = {}
     for item in observations:
-        latest.setdefault(item.signal, item)
+        latest.setdefault((item.target_id, item.signal), item)
     current = list(latest.values())
     order = {"HEALTHY": 0, "DEGRADED": 1, "WARNING": 2, "UNKNOWN": 3, "CRITICAL": 4}
     now = datetime.now(UTC)
@@ -269,17 +276,38 @@ def snapshot(
     return {
         "environment_id": environment.id,
         "overall_state": overall,
+        "data_mode": settings.infrastructure_mode,
+        "collector": {
+            "status": "UNKNOWN" if not collector or not collector.last_seen_at else "ONLINE",
+            "sequence": collector.last_sequence if collector else None,
+            "last_snapshot_age_seconds": (
+                int(
+                    (
+                        now
+                        - (
+                            collector.last_seen_at.replace(tzinfo=UTC)
+                            if collector.last_seen_at.tzinfo is None
+                            else collector.last_seen_at
+                        )
+                    ).total_seconds()
+                )
+                if collector and collector.last_seen_at
+                else None
+            ),
+        },
         "observed_at": observations[0].observed_at if observations else None,
         "observations": [
             {
                 "id": item.id,
                 "target_id": item.target_id,
+                "target": targets.get(item.target_id),
                 "component": item.component,
                 "signal": item.signal,
                 "code": item.code,
                 "state": item.state.value,
                 "observed_at": item.observed_at,
                 "numeric_value": item.numeric_value,
+                "text_value": item.text_value,
                 "unit": item.unit,
                 "message": item.message,
                 "source": item.source,
@@ -326,16 +354,22 @@ def observation_history(
         .order_by(Observation.observed_at.desc())
         .limit(500)
     )
+    targets = {
+        item.id: item.key
+        for item in db.scalars(select(Target).where(Target.environment_id == environment_id))
+    }
     return [
         {
             "id": item.id,
             "target_id": item.target_id,
+            "target": targets.get(item.target_id),
             "component": item.component,
             "signal": item.signal,
             "code": item.code,
             "state": item.state.value,
             "observed_at": item.observed_at,
             "numeric_value": item.numeric_value,
+            "text_value": item.text_value,
             "unit": item.unit,
             "message": item.message,
             "source": item.source,
