@@ -38,7 +38,7 @@ def test_publisher_requires_scoped_identity_and_exact_backup_path(monkeypatch):
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     config = publisher.environment_config()
-    assert config["backup_status_path"] == "/var/backups/plenora/status.json"
+    assert config["backup_status_path"] == "/status/backup-status.json"
     monkeypatch.delenv("PLENORA_OBSERVER_TOKEN")
     with pytest.raises(RuntimeError, match="configuration incomplete"):
         publisher.environment_config()

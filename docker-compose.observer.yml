@@ -16,6 +16,7 @@ services:
       PLENORA_OBSERVER_POLL_SECONDS: ${PLENORA_OBSERVER_POLL_SECONDS:-60}
       OBSERVER_MODE: production
       OBSERVER_HOST_STATUS_PATH: /status/host.json
+      OBSERVER_BACKUP_STATUS_PATH: /status/backup-status.json
       OBSERVER_CONTAINER_CADDY: ${OBSERVER_CONTAINER_CADDY:?required}
       OBSERVER_CONTAINER_FRONTEND: ${OBSERVER_CONTAINER_FRONTEND:?required}
       OBSERVER_CONTAINER_BACKEND: ${OBSERVER_CONTAINER_BACKEND:?required}
@@ -23,7 +24,7 @@ services:
       OBSERVER_CONTAINER_MAIL_WORKER: ${OBSERVER_CONTAINER_MAIL_WORKER:?required}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/backups/plenora/status.json:/var/backups/plenora/status.json:ro
+      - /run/plenora-cockpit/backup-status.json:/status/backup-status.json:ro
       - /run/plenora-cockpit/host.json:/status/host.json:ro
       - plenora_observer_state:/state
     group_add: ["${DOCKER_GID:?required}"]

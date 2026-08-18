@@ -65,7 +65,9 @@ de oude configuratie gerecreëerd. Er wordt geen credentialwaarde gelogd.
 - backend en frontend delen het externe Caddy-netwerk, zonder hostpoort.
 - de VPS-2 collector heeft alleen externe HTTPS-probes en intern ingestverkeer;
 - VPS 2 bevat geen Plenora-socket, filesystemmount of databasecredential;
-- de VPS-1 observer-publisher heeft lokaal de socket, exact status.json, exact host.json en de
+- de root-owned VPS-1 host-helper leest exact het afgeschermde Backup v1 `status.json` en publiceert
+  alleen gevalideerde technische velden naar `/run/plenora-cockpit/backup-status.json`;
+- de observer-publisher mount exact deze 0644-boundarykopie, exact `host.json`, de socket en de
   least-privilege database-DSN;
 - de observer luistert niet op een HTTP-poort en pusht `snapshot.v1` via authenticated HTTPS ingest.
 

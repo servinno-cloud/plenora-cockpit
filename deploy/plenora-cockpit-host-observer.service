@@ -1,5 +1,5 @@
 [Unit]
-Description=Generate closed Plenora Cockpit host metrics
+Description=Generate closed Plenora Cockpit host and backup status
 
 [Service]
 Type=oneshot

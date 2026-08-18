@@ -3,6 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 output=/run/plenora-cockpit/host.json
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 install -d -m 0755 -o root -g root /run/plenora-cockpit
 temporary="${output}.tmp"
 
@@ -17,3 +18,4 @@ printf '{"timestamp":"%s","uptime_seconds":%.0f,"root_total_bytes":%s,"root_used
   "$backup_total" "$backup_used" "$backup_free" "${backup_inode%%%}" "$load_1" "$load_5" "$load_15" > "$temporary"
 chmod 0644 "$temporary"
 mv -f "$temporary" "$output"
+/usr/bin/python3 "$script_dir/backup-status-boundary.py"

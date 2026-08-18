@@ -133,7 +133,9 @@ read probe failure is CRITICAL; migrations achter release is WARNING of CRITICAL
 
 ### Backups
 
-Bron: `/var/backups/plenora/status.json`.
+Root-only bron: `/var/backups/plenora/status.json`. De production observer leest deze bron niet
+rechtstreeks. De systemd host-helper valideert uitsluitend onderstaande Backup v1-velden en
+publiceert ze atomisch als `/run/plenora-cockpit/backup-status.json` voor de non-root publisher.
 
 - `backup.last_attempt_at`;
 - `backup.last_success_at`;

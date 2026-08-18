@@ -162,7 +162,9 @@ def environment_config():
         "secret": "PLENORA_OBSERVER_TOKEN", "ingest_url": "COCKPIT_INGEST_URL",
         "database_url": "PLENORA_MONITOR_DATABASE_URL"}
     config = {key: os.getenv(name, "") for key, name in mapping.items()}
-    config["backup_status_path"] = "/var/backups/plenora/status.json"
+    config["backup_status_path"] = os.getenv(
+        "OBSERVER_BACKUP_STATUS_PATH", "/status/backup-status.json"
+    )
     config["release"] = os.getenv("PLENORA_OBSERVER_RELEASE", "")
     if any(not value for value in config.values()):
         raise RuntimeError("observer publisher configuration incomplete")
