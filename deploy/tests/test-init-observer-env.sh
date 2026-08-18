@@ -25,8 +25,10 @@ environment_id='11111111-1111-4111-8111-111111111111'
 observer_id='33333333-3333-4333-8333-333333333333'
 observer_token='synthetic-observer-token-0000000000000000'
 database_url='postgresql://monitor:synthetic@db/plenora'
-output="$(printf '%s\n%s\n%s\n%s\n' \
-  "$environment_id" "$observer_id" "$observer_token" "$database_url" | \
+printf 'PLENORA_MONITOR_DATABASE_URL=%s\n' "$database_url" > "$test_root/.observer-database.provision"
+chmod 600 "$test_root/.observer-database.provision"
+output="$(printf '%s\n%s\n%s\n' \
+  "$environment_id" "$observer_id" "$observer_token" | \
   bash "$test_root/deploy/init-observer-env.sh" 2>&1)"
 
 [[ "$output" == *'Observer production environment initialized successfully.'* ]]
@@ -44,7 +46,10 @@ grep -Fxq "COLLECTOR_ENVIRONMENT_ID=$environment_id" "$test_root/.env.observer"
 grep -Fxq "PLENORA_OBSERVER_ID=$observer_id" "$test_root/.env.observer"
 grep -Fxq "PLENORA_OBSERVER_TOKEN=$observer_token" "$test_root/.env.observer"
 grep -Fxq "PLENORA_MONITOR_DATABASE_URL=$database_url" "$test_root/.env.observer"
+[[ ! -e "$test_root/.observer-database.provision" ]]
 
+printf 'PLENORA_MONITOR_DATABASE_URL=%s\n' "$database_url" > "$test_root/.observer-database.provision"
+chmod 600 "$test_root/.observer-database.provision"
 if bash "$test_root/deploy/init-observer-env.sh" >/dev/null 2>&1; then
   printf 'existing observer env was overwritten without --force\n' >&2
   exit 1

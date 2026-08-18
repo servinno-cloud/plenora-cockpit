@@ -4,11 +4,14 @@ umask 077
 set +o history 2>/dev/null || true
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$script_dir/.." && pwd -P)"
 sql_file="$script_dir/sql/create-monitoring-role.sql"
+provision_file="$repo_root/.observer-database.provision"
 container="app-db-1"
 password=""
-confirmation=""
 command_output=""
+database_name=""
+temporary=""
 role_created=false
 completed=false
 
@@ -27,19 +30,24 @@ cleanup() {
       'BEGIN; DROP OWNED BY plenora_cockpit_monitor; DROP ROLE plenora_cockpit_monitor; COMMIT;' \
       >/dev/null 2>&1 || true
   fi
-  unset password confirmation command_output
+  [[ -z "$temporary" ]] || rm -f -- "$temporary"
+  unset password command_output database_name PGPASSWORD
   exit "$original_status"
 }
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
-for command in docker grep; do
+for command in docker grep mktemp chmod mv openssl; do
   command -v "$command" >/dev/null 2>&1 || {
     printf 'Required command is unavailable: %s\n' "$command" >&2
     exit 1
   }
 done
 [[ -r "$sql_file" ]] || { printf 'Monitoring role SQL is missing.\n' >&2; exit 1; }
+[[ ! -e "$provision_file" ]] || {
+  printf 'Database provisioningbestand bestaat al; consumeer het eerst.\n' >&2
+  exit 1
+}
 [[ "$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null)" == true ]] || {
   printf 'Production database container app-db-1 is not running.\n' >&2
   exit 1
@@ -52,25 +60,17 @@ if [[ "$existing" == 1 ]]; then
   exit 1
 fi
 
-if ! IFS= read -r -s -p 'Nieuw monitoringwachtwoord: ' password; then
-  printf '\nWachtwoordinvoer is afgebroken.\n' >&2
+password="$(openssl rand -hex 16)"
+[[ "$password" =~ ^[0-9a-f]{32}$ ]] || {
+  printf 'Veilige wachtwoordgeneratie is mislukt.\n' >&2
   exit 1
-fi
-printf '\n' >&2
-if ! IFS= read -r -s -p 'Herhaal monitoringwachtwoord: ' confirmation; then
-  printf '\nWachtwoordinvoer is afgebroken.\n' >&2
+}
+database_name="$(docker exec -i "$container" sh -lc \
+  'printf %s "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"')"
+[[ "$database_name" =~ ^[0-9A-Za-z_.-]+$ ]] || {
+  printf 'Database name is niet URL-veilig.\n' >&2
   exit 1
-fi
-printf '\n' >&2
-if (( ${#password} < 32 )); then
-  printf 'Monitoringwachtwoord moet minimaal 32 tekens bevatten.\n' >&2
-  exit 1
-fi
-if [[ "$password" != "$confirmation" ]]; then
-  printf 'Wachtwoorden komen niet overeen.\n' >&2
-  exit 1
-fi
-confirmation=""
+}
 
 command_output="$(docker exec -i "$container" sh -lc \
   'database_user=${POSTGRES_USER:-postgres}; database_name=${POSTGRES_DB:-$database_user}; \
@@ -96,11 +96,18 @@ command_output="$(docker exec -i -e PGPASSWORD "$container" sh -lc \
   printf 'Monitoringrole-loginverificatie is mislukt.\n' >&2
   exit 1
 }
-unset PGPASSWORD
 if [[ "${command_output//[[:space:]]/}" != on ]]; then
   printf 'Monitoringrole is niet read-only.\n' >&2
   exit 1
 fi
 
+temporary="$(mktemp "$repo_root/.observer-database.provision.tmp.XXXXXX")"
+printf 'PLENORA_MONITOR_DATABASE_URL=postgresql://plenora_cockpit_monitor:%s@app-db-1:5432/%s\n' \
+  "$PGPASSWORD" "$database_name" > "$temporary"
+chmod 600 "$temporary"
+mv -- "$temporary" "$provision_file"
+temporary=""
+chmod 600 "$provision_file"
+unset PGPASSWORD
 completed=true
 printf 'Monitoringrol succesvol aangemaakt.\n'

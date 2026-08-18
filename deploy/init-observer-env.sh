@@ -8,6 +8,7 @@ repo_root="$(cd -- "$script_dir/.." && pwd -P)"
 template="$repo_root/.env.observer.example"
 target="$repo_root/.env.observer"
 compose_file="$repo_root/docker-compose.observer.yml"
+database_provision="$repo_root/.observer-database.provision"
 force=false
 temporary=""
 environment_id=""
@@ -28,7 +29,7 @@ case "${1:-}" in
 esac
 (( $# <= 1 )) || exit 2
 
-for command in docker git mktemp chmod mv; do
+for command in docker git mktemp chmod mv stat rm; do
   command -v "$command" >/dev/null 2>&1 || {
     printf 'Required command is unavailable: %s\n' "$command" >&2
     exit 1
@@ -36,6 +37,14 @@ for command in docker git mktemp chmod mv; do
 done
 [[ -r "$template" && -f "$compose_file" ]] || {
   printf 'Observer template or Compose file is missing.\n' >&2
+  exit 1
+}
+[[ -f "$database_provision" && ! -L "$database_provision" ]] || {
+  printf 'Private database provisioningbestand ontbreekt of is ongeldig.\n' >&2
+  exit 1
+}
+[[ "$(stat -c '%a' "$database_provision")" == 600 ]] || {
+  printf 'Database provisioningbestand moet mode 0600 hebben.\n' >&2
   exit 1
 }
 if [[ -e "$target" && "$force" != true ]]; then
@@ -47,8 +56,12 @@ IFS= read -r -p 'Cockpit environment UUID: ' environment_id
 IFS= read -r -p 'Provisioned observer UUID: ' observer_id
 IFS= read -r -s -p 'Provisioned observer token: ' observer_token
 printf '\n' >&2
-IFS= read -r -s -p 'Read-only Plenora monitoring DATABASE_URL: ' database_url
-printf '\n' >&2
+IFS= read -r database_line < "$database_provision"
+[[ "$database_line" == PLENORA_MONITOR_DATABASE_URL=* ]] || {
+  printf 'Database provisioningbestand heeft een ongeldig formaat.\n' >&2
+  exit 1
+}
+database_url="${database_line#PLENORA_MONITOR_DATABASE_URL=}"
 
 uuid_pattern='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
 if [[ ! "$environment_id" =~ $uuid_pattern || ! "$observer_id" =~ $uuid_pattern ]]; then
@@ -92,4 +105,5 @@ docker compose --env-file "$temporary" -f "$compose_file" config --quiet
 mv -f -- "$temporary" "$target"
 temporary=""
 chmod 600 "$target"
+rm -f -- "$database_provision"
 printf 'Observer production environment initialized successfully.\n'

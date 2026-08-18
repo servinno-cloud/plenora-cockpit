@@ -1,6 +1,7 @@
 .env
 .env.deploy
 .env.observer
+.observer-database.provision
 .venv/
 __pycache__/
 .pytest_cache/

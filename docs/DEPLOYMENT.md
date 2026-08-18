@@ -21,8 +21,12 @@ VPS 1. Verwijder het overdrachtsbestand na succesvolle Composevalidatie. Maak de
 met één veilig interactief commando; gebruik nooit de Plenora-applicatiecredential:
 
 ```bash
-cd /opt/plenora-observer/app && bash deploy/create-monitoring-role.sh
+cd /opt/plenora-observer/app && sudo bash deploy/create-monitoring-role.sh
 ```
+
+De helper genereert zelf een 32-teken hexcredential en bewaart alleen tijdelijk een mode-0600
+database-DSN in `.observer-database.provision`. `deploy/init-observer-env.sh` neemt die DSN eenmalig
+over in `.env.observer` en verwijdert daarna het provisioningbestand.
 
 Initialiseer op VPS 2 de production environment één keer vanuit de repositoryroot:
 
