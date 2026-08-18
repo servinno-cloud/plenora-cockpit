@@ -2,7 +2,7 @@
 
 Sprint 3 gebruikt twee losse deployments. VPS 2 bevat Cockpit onder `/opt/plenora-cockpit/app` met
 `docker-compose.deploy.yml`. VPS 1 bevat de Plenora observer-publisher onder
-`/opt/plenora-cockpit-observer/app` met `docker-compose.observer.yml`. Beide env-bestanden zijn
+`/opt/plenora-observer/app` met `docker-compose.observer.yml`. Beide env-bestanden zijn
 niet-getrackt en mode `0600`. Deze repository voert geen deployment, DNS- of Caddy-mutatie uit.
 
 Initialiseer op VPS 2 de production environment één keer vanuit de repositoryroot:

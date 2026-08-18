@@ -10,7 +10,7 @@
 6. Draai Alembic upgrade/current/check.
 7. Provision de eerste OWNER interactief en verwijder bootstrapconfig.
 8. Genereer uniek collectortoken, seed de collectoridentiteit.
-9. Clone op VPS 1 naar `/opt/plenora-cockpit-observer/app`, maak `.env.observer` mode `0600`.
+9. Clone op VPS 1 naar `/opt/plenora-observer/app`, maak `.env.observer` mode `0600`.
 10. Maak daar de monitorrol met psql-variabelen en zonder business-table grants.
 11. Installeer op VPS 1 de hostmetrics timer en controleer de vijf vaste containernamen.
 12. Valideer/voeg de Caddy-snippet toe zonder Pilot-routing te verwijderen.
