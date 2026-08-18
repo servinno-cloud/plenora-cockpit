@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from test_foundation import login, owner
 
+from app.cli import rotate_collector_secret
 from app.models import (
     Collector,
     Environment,
@@ -14,6 +15,8 @@ from app.models import (
     Product,
     Target,
 )
+
+TEST_COLLECTOR_SECRET = "collector-test-secret-with-32-characters"
 
 
 def setup_monitoring(db):
@@ -30,13 +33,14 @@ def setup_monitoring(db):
         ("database", "Database"),
         ("mail", "Mail"),
         ("backend", "Backend"),
+        ("collector", "Collector"),
     ):
         db.add(Target(environment_id=environment.id, key=key, name=name, component=name))
     collector = Collector(
         id=uuid.uuid4(),
         environment_id=environment.id,
         name="host-1",
-        secret_hash=hashlib.sha256(b"collector-test-secret").hexdigest(),
+        secret_hash=hashlib.sha256(TEST_COLLECTOR_SECRET.encode()).hexdigest(),
     )
     db.add(collector)
     db.commit()
@@ -89,14 +93,14 @@ def test_two_collector_identities_have_independent_sequences(client, db):
     db.add(second)
     db.commit()
     first_response = post(client, environment, payload(environment, first, sequence=1),
-                          secret="collector-test-secret")
+                          secret=TEST_COLLECTOR_SECRET)
     second_response = post(client, environment, payload(environment, second, sequence=1),
                            secret="second-collector-secret")
     assert first_response.status_code == 202
     assert second_response.status_code == 202
 
 
-def post(client, environment, body, secret="collector-test-secret"):
+def post(client, environment, body, secret=TEST_COLLECTOR_SECRET):
     return client.post(
         f"/ingest/v1/environments/{environment.id}/snapshots",
         json=body,
@@ -300,3 +304,73 @@ def test_ingest_rejects_credentials_schema_and_write_routes(client, db):
         "/api/restore",
     ):
         assert client.post(path, json={}).status_code == 404
+
+
+def test_external_production_snapshot_passes_snapshot_v1_validation(client, db):
+    environment, collector = setup_monitoring(db)
+    body = payload(environment, collector)
+    body["collector_version"] = "a" * 40
+    observed_at = body["observations"][0]["observed_at"]
+    body["observations"] = [
+        {
+            "target": "web",
+            "signal": signal,
+            "source": "external_https",
+            "observed_at": observed_at,
+            "state": "HEALTHY",
+            "code": "probe_ok",
+            "message": "Meting uitgevoerd",
+            "value": value,
+            "unit": unit,
+        }
+        for signal, value, unit in (
+            ("https.reachable", True, None),
+            ("https.status_code", 200, None),
+            ("https.latency_ms", 42, "ms"),
+            ("health.status_code", 200, None),
+            ("tls.days_remaining", 60, "days"),
+        )
+    ] + [
+        {
+            "target": "collector",
+            "signal": signal,
+            "source": "collector_self",
+            "observed_at": observed_at,
+            "state": "HEALTHY",
+            "code": "probe_ok",
+            "message": "Meting uitgevoerd",
+            "value": value,
+            "unit": None,
+        }
+        for signal, value in (("collector.sequence", 1), ("collector.status", "online"))
+    ]
+    assert post(client, environment, body).status_code == 422
+    body["collector_version"] = body["collector_version"][:32]
+    assert post(client, environment, body).status_code == 202
+    assert db.scalar(select(func.count()).select_from(Observation)) == 7
+
+
+def test_collector_secret_rotation_preserves_binding_and_sequence(client, db, monkeypatch, capsys):
+    environment, collector = setup_monitoring(db)
+    assert post(client, environment, payload(environment, collector, sequence=1)).status_code == 202
+    old_secret = TEST_COLLECTOR_SECRET
+    new_secret = "new-collector-secret-that-is-at-least-32-characters"
+    monkeypatch.setenv("COCKPIT_ROTATION_ENVIRONMENT_ID", str(environment.id))
+    monkeypatch.setenv("COCKPIT_ROTATION_COLLECTOR_ID", str(collector.id))
+    monkeypatch.setenv("COCKPIT_ROTATION_CURRENT_SECRET", old_secret)
+    monkeypatch.setenv("COCKPIT_ROTATION_NEW_SECRET", new_secret)
+
+    rotate_collector_secret()
+    output = capsys.readouterr()
+    assert old_secret not in output.out + output.err
+    assert new_secret not in output.out + output.err
+    db.expire_all()
+    rotated = db.get(Collector, collector.id)
+    assert rotated.environment_id == environment.id
+    assert rotated.last_sequence == 1
+    next_snapshot = payload(environment, collector, sequence=2)
+    old_response = post(client, environment, next_snapshot, old_secret)
+    next_snapshot["snapshot_id"] = str(uuid.uuid4())
+    new_response = post(client, environment, next_snapshot, new_secret)
+    assert old_response.status_code == 401
+    assert new_response.status_code == 202

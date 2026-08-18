@@ -151,8 +151,10 @@ def test_external_snapshot_contains_only_web_and_self_monitoring(monkeypatch):
     config = {
         "web_url": "x", "health_url": "x", "profile": "external",
         "collector_id": "c", "environment_id": "e",
-        "release": "test",
+        "release": "a" * 40,
     }
     monkeypatch.setattr("src.runner.web_probe", lambda *args: [])
-    targets = {item["target"] for item in build_snapshot(config, 1)["observations"]}
+    snapshot = build_snapshot(config, 1)
+    targets = {item["target"] for item in snapshot["observations"]}
     assert targets == {"collector"}
+    assert snapshot["collector_version"] == "a" * 32

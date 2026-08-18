@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -58,7 +59,7 @@ def build_snapshot(config: dict[str, str], sequence: int) -> dict:
         "environment_id": config["environment_id"],
         "sequence": sequence,
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "collector_version": config.get("release", "development"),
+        "collector_version": config.get("release", "development")[:32],
         "observations": observations,
     }
 
@@ -113,6 +114,16 @@ def run_once(config: dict[str, str], state_path: str = "/state/state.json") -> d
         except urllib.error.HTTPError as error:
             if error.code not in {400, 409, 413, 422}:
                 break
+            error_codes = {
+                400: "invalid_envelope",
+                409: "sequence_replayed",
+                413: "snapshot_too_large",
+                422: "snapshot_invalid",
+            }
+            print(
+                f"snapshot rejected status={error.code} error_code={error_codes[error.code]}",
+                file=sys.stderr,
+            )
             state["pending"].remove(pending)
             state["sequence"] = pending["sequence"]
             save_state(state_file, state)

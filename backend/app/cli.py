@@ -110,13 +110,70 @@ def seed_monitoring() -> None:
     print("Monitoring seed ready")
 
 
+def rotate_collector_secret() -> None:
+    environment_id = uuid.UUID(os.environ["COCKPIT_ROTATION_ENVIRONMENT_ID"])
+    collector_id = uuid.UUID(os.environ["COCKPIT_ROTATION_COLLECTOR_ID"])
+    current_secret = os.environ["COCKPIT_ROTATION_CURRENT_SECRET"]
+    new_secret = os.environ["COCKPIT_ROTATION_NEW_SECRET"]
+    if min(len(current_secret), len(new_secret)) < 32 or current_secret == new_secret:
+        raise SystemExit("Collector secret rotation refused")
+    current_hash = hashlib.sha256(current_secret.encode()).hexdigest()
+    new_hash = hashlib.sha256(new_secret.encode()).hexdigest()
+    with SessionLocal.begin() as db:
+        collector = db.scalar(
+            select(Collector)
+            .where(
+                Collector.id == collector_id,
+                Collector.environment_id == environment_id,
+                Collector.active.is_(True),
+                Collector.secret_hash == current_hash,
+            )
+            .with_for_update()
+        )
+        if not collector:
+            raise SystemExit("Collector secret rotation refused")
+        collector.secret_hash = new_hash
+    print("Collector secret rotated")
+
+
+def verify_collector_secret() -> None:
+    environment_id = uuid.UUID(os.environ["COCKPIT_ROTATION_ENVIRONMENT_ID"])
+    collector_id = uuid.UUID(os.environ["COCKPIT_ROTATION_COLLECTOR_ID"])
+    candidate = os.environ["COCKPIT_ROTATION_CANDIDATE_SECRET"]
+    candidate_hash = hashlib.sha256(candidate.encode()).hexdigest()
+    with SessionLocal() as db:
+        collector = db.scalar(
+            select(Collector).where(
+                Collector.id == collector_id,
+                Collector.environment_id == environment_id,
+                Collector.active.is_(True),
+                Collector.secret_hash == candidate_hash,
+            )
+        )
+    if not collector:
+        raise SystemExit("Collector credential rejected")
+    print("Collector credential valid")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cockpit local bootstrap")
-    parser.add_argument("command", choices=["create-owner", "seed-monitoring"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "create-owner",
+            "seed-monitoring",
+            "rotate-collector-secret",
+            "verify-collector-secret",
+        ],
+    )
     parser.add_argument("--email", default=os.getenv("COCKPIT_BOOTSTRAP_EMAIL", ""))
     args = parser.parse_args()
     if args.command == "seed-monitoring":
         seed_monitoring()
+    elif args.command == "rotate-collector-secret":
+        rotate_collector_secret()
+    elif args.command == "verify-collector-secret":
+        verify_collector_secret()
     else:
         password = os.getenv("COCKPIT_BOOTSTRAP_PASSWORD") or getpass.getpass("Owner password: ")
         create_owner(args.email, password)

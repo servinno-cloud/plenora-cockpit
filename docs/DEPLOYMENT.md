@@ -41,6 +41,24 @@ bash deploy/bootstrap-owner.sh
 Het wachtwoord wordt verborgen gelezen en uitsluitend via naamgebaseerde environment-forwarding aan
 het eenmalige CLI-proces gegeven. Het verschijnt niet in argv, logs, shell history of `.env.deploy`.
 
+## Collectorcredential roteren
+
+Roteer een gelekte of periodiek te vervangen VPS-2 collectorcredential zonder deze te tonen of in
+commandlineargumenten te plaatsen:
+
+```bash
+cd /opt/plenora-cockpit/app
+bash deploy/rotate-collector-secret.sh
+```
+
+De helper controleert eerst de huidige DB-hash, schrijft `.env.deploy` atomisch met mode `0600`,
+vernieuwt uitsluitend de verificatiehash onder een row lock en recreëert backend en collector zodat
+geen oude credential in een procesenvironment achterblijft. Het named collector-statevolume blijft
+gekoppeld, zodat sequence en pending snapshots
+behouden blijven. Daarna worden de nieuwe credential en de afwijzing van de oude credential
+gecontroleerd. Bij een fout worden env-file en DB-hash teruggezet en wordt de collector opnieuw met
+de oude configuratie gerecreëerd. Er wordt geen credentialwaarde gelogd.
+
 ## Topologie
 
 - `cockpit-db` staat alleen intern en heeft geen hostpoort.

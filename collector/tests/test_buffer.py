@@ -79,7 +79,7 @@ def test_success_removes_each_item_durably(monkeypatch, tmp_path):
     assert state["pending"] == [] and persisted == state
 
 
-def test_permanent_rejection_does_not_block_new_snapshots(monkeypatch, tmp_path):
+def test_permanent_rejection_does_not_block_new_snapshots(monkeypatch, tmp_path, capsys):
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps({"sequence": 0, "pending": [snapshot(1)]}))
     monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
@@ -94,3 +94,24 @@ def test_permanent_rejection_does_not_block_new_snapshots(monkeypatch, tmp_path)
     state = runner.run_once(CONFIG, str(state_path))
     assert delivered == [2]
     assert state == {"sequence": 2, "pending": []}
+    diagnostic = capsys.readouterr()
+    assert "snapshot rejected status=400 error_code=invalid_envelope" in diagnostic.err
+    assert CONFIG["collector_secret"] not in diagnostic.out + diagnostic.err
+
+
+def test_422_diagnostic_is_safe_and_does_not_read_response_body(monkeypatch, tmp_path, capsys):
+    state_path = tmp_path / "state.json"
+    response_body = io.BytesIO(b'sensitive payload details must not be logged')
+    monkeypatch.setattr(runner, "build_snapshot", lambda config, sequence: snapshot(sequence))
+    monkeypatch.setattr(
+        runner,
+        "send",
+        lambda item, config: (_ for _ in ()).throw(
+            urllib.error.HTTPError("http://ingest", 422, "invalid", {}, response_body)
+        ),
+    )
+    runner.run_once(CONFIG, str(state_path))
+    diagnostic = capsys.readouterr()
+    assert diagnostic.err.strip() == "snapshot rejected status=422 error_code=snapshot_invalid"
+    assert "sensitive payload" not in diagnostic.out + diagnostic.err
+    assert CONFIG["collector_secret"] not in diagnostic.out + diagnostic.err
