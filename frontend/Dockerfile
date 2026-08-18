@@ -21,6 +21,8 @@ RUN pnpm build
 FROM node:22.18.0-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
