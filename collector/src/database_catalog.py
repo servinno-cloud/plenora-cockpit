@@ -7,7 +7,7 @@ DATABASE_QUERIES = {
         "SELECT count(*) * 100.0 / current_setting('max_connections')::int "
         "FROM pg_stat_activity WHERE datname = current_database()"
     ),
-    "migration_current": "SELECT version_num FROM alembic_version LIMIT 1",
+    "django_migration_count": "SELECT count(*) FROM public.django_migrations",
 }
 
 

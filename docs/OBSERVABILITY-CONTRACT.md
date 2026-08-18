@@ -85,11 +85,17 @@ zichtbaar met `stale=true`; na de freshnessgrens wordt het signaal UNKNOWN.
 ## Vereiste signalen
 
 Sprint 2 behoudt `snapshot.v1` en voegt gesloten signalen toe: `db.reachable`, `db.version_major`,
-`db.latency_ms`, `db.size_bytes`, `db.connections_percent`, `db.migration_current`, de privacyarme
+`db.latency_ms`, `db.size_bytes`, `db.connections_percent`, `db.django_migration_count`,
+`db.migration_current`, de privacyarme
 `mail.*` counts/states, `service.running`, `service.health`, `service.restart_count`,
 `service.uptime_seconds`, `service.release_state`, `collector.sequence` en `collector.status`.
 Tekstwaarden zijn beperkte enums; onbekende signalen, services, bronnen en tekstwaarden worden
 geweigerd.
+
+`db.django_migration_count` telt uitsluitend records in `public.django_migrations`; app- en
+migrationnamen worden niet gepubliceerd. Zonder expliciete verwachte releasemarker kan PostgreSQL
+niet weten welke Django migration de applicatie verwacht. `db.migration_current` blijft daarom
+expliciet `UNKNOWN`; alleen het bestaan of de omvang van de tabel wordt nooit als current behandeld.
 
 ### Externe web/backend
 

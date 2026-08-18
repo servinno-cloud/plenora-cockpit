@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from src import probes
@@ -10,10 +12,26 @@ def test_database_catalog_is_closed_and_contains_no_business_tables():
         "version_major",
         "size_bytes",
         "connections_percent",
-        "migration_current",
+        "django_migration_count",
     }
     combined = " ".join(DATABASE_QUERIES.values()).lower()
-    for forbidden in ("people", "shifts", "leave", "notes", "mail", "insert", "update", "delete"):
+    assert "alembic_version" not in combined
+    assert "public.django_migrations" in combined
+    assert "pg_database_size(current_database())" in combined
+    assert "from pg_stat_activity" in combined
+    relations = set(re.findall(r"\bfrom\s+([a-z0-9_.]+)", combined))
+    assert relations == {"pg_stat_activity", "public.django_migrations"}
+    for forbidden in (
+        "people",
+        "person",
+        "shifts",
+        "leave",
+        "notes",
+        "mail",
+        "insert",
+        "update",
+        "delete",
+    ):
         assert forbidden not in combined
     with pytest.raises(KeyError):
         query_for("SELECT * FROM people")
@@ -30,7 +48,8 @@ def test_database_latency_policies(monkeypatch, latency, state):
             "latency_ms": latency,
             "size_bytes": 1000,
             "connections_percent": 20,
-            "migration_current": True,
+            "django_migration_count": 42,
+            "migration_current": None,
         },
     )
     result = probes.database_probe("http://fixture")
@@ -47,13 +66,15 @@ def test_database_unreachable_connections_and_migration(monkeypatch):
             "latency_ms": 5,
             "size_bytes": 1000,
             "connections_percent": 95,
-            "migration_current": False,
+            "django_migration_count": 42,
+            "migration_current": None,
         },
     )
     states = {item["signal"]: item["state"] for item in probes.database_probe("x")}
     assert states["db.reachable"] == "CRITICAL"
     assert states["db.connections_percent"] == "CRITICAL"
-    assert states["db.migration_current"] == "WARNING"
+    assert states["db.migration_current"] == "UNKNOWN"
+    assert states["db.django_migration_count"] == "HEALTHY"
 
 
 @pytest.mark.parametrize(

@@ -47,6 +47,7 @@ ALLOWED_SIGNALS = {
     "db.latency_ms",
     "db.size_bytes",
     "db.connections_percent",
+    "db.django_migration_count",
     "db.migration_current",
     "mail.provider_state",
     "mail.worker_running",

@@ -175,6 +175,7 @@ def database_probe(boundary_url: str, target="database"):
         "latency_ms",
         "size_bytes",
         "connections_percent",
+        "django_migration_count",
         "migration_current",
     }
     try:
@@ -194,8 +195,8 @@ def database_probe_values(data: dict, target="database"):
             state = "CRITICAL" if value > 2000 else "WARNING" if value > 500 else state
         elif key == "connections_percent":
             state = "CRITICAL" if value > 90 else "WARNING" if value > 80 else state
-        elif key == "migration_current" and value is not True:
-            state = "WARNING"
+        elif key == "migration_current":
+            state = "UNKNOWN" if value is None else "HEALTHY" if value is True else "WARNING"
         result.append(_obs(target, f"db.{key}", "database_contract", value, state))
     return result
 
@@ -215,13 +216,9 @@ def database_connection_probe(dsn: str, target="database"):
                 for key, query in DATABASE_QUERIES.items():
                     cursor.execute(query)
                     value = cursor.fetchone()[0]
-                    values[key] = (
-                        bool(value)
-                        if key == "migration_current"
-                        else float(value)
-                        if key == "connections_percent"
-                        else value
-                    )
+                    values[key] = float(value) if key == "connections_percent" else value
+        # The database records applied Django migrations, but cannot know the release expectation.
+        values["migration_current"] = None
         values["reachable"] = True
         values["latency_ms"] = round((time.monotonic() - start) * 1000)
         return database_probe_values(values, target)

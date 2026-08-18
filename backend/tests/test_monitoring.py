@@ -374,3 +374,34 @@ def test_collector_secret_rotation_preserves_binding_and_sequence(client, db, mo
     new_response = post(client, environment, next_snapshot, new_secret)
     assert old_response.status_code == 401
     assert new_response.status_code == 202
+
+
+def test_django_migration_metadata_does_not_claim_unknown_expectation_is_healthy(client, db):
+    environment, collector = setup_monitoring(db)
+    count = payload(
+        environment,
+        collector,
+        sequence=1,
+        value=42,
+        signal="db.django_migration_count",
+        target="database",
+        source="database_contract",
+    )
+    unknown = payload(
+        environment,
+        collector,
+        sequence=2,
+        value=None,
+        signal="db.migration_current",
+        state="UNKNOWN",
+        target="database",
+        source="database_contract",
+    )
+    assert post(client, environment, count).status_code == 202
+    assert post(client, environment, unknown).status_code == 202
+    observations = db.scalars(
+        select(Observation).where(Observation.environment_id == environment.id)
+    ).all()
+    states = {item.signal: item.state.value for item in observations}
+    assert states["db.django_migration_count"] == "HEALTHY"
+    assert states["db.migration_current"] == "UNKNOWN"

@@ -5,6 +5,21 @@ Sprint 3 gebruikt twee losse deployments. VPS 2 bevat Cockpit onder `/opt/plenor
 `/opt/plenora-observer/app` met `docker-compose.observer.yml`. Beide env-bestanden zijn
 niet-getrackt en mode `0600`. Deze repository voert geen deployment, DNS- of Caddy-mutatie uit.
 
+Initialiseer op VPS 1 `.env.observer` interactief zonder secrets in shellhistory of editor:
+
+```bash
+cd /opt/plenora-observer/app
+bash deploy/init-observer-env.sh
+```
+
+De helper zet het vaste productionnetwerk, Docker-GID, vijf containernamen en de Cockpit-ingest-URL.
+Environment-ID, observer-ID/token en de read-only monitoring-DSN worden gecontroleerd of verborgen
+ingelezen en atomisch in een mode-0600 env-file geschreven. De helper genereert deze credentials niet.
+Maak op VPS 2 een unieke UUIDv4 en 32-byte hex-token in een root-only tijdelijk bestand, seed die
+observeridentiteit in Cockpit en draag het bestand éénmalig via het beheertransport over naar root op
+VPS 1. Verwijder het overdrachtsbestand na succesvolle Composevalidatie. Maak de database-DSN apart
+met `deploy/sql/create-monitoring-role.sql`; gebruik nooit de Plenora-applicatiecredential.
+
 Initialiseer op VPS 2 de production environment één keer vanuit de repositoryroot:
 
 ```bash
