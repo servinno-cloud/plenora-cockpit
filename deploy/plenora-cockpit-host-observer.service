@@ -7,6 +7,7 @@ User=root
 Group=root
 RuntimeDirectory=plenora-cockpit
 RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 ExecStart=/usr/bin/bash /opt/plenora-observer/app/deploy/host-observer.sh
 PrivateTmp=true
 ProtectHome=true
