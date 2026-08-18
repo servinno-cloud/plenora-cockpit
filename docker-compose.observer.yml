@@ -1,6 +1,22 @@
 name: plenora-cockpit-observer
 
 services:
+  observer-state-init:
+    build:
+      context: .
+      dockerfile: observer/Dockerfile
+      target: publisher
+    user: "0:0"
+    command: [sh, -eu, -c, "chown 0:0 /state && chmod 0700 /state && chown 10003:10003 /state"]
+    volumes:
+      - plenora_observer_state:/state
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
   plenora-observer:
     build:
       context: .
@@ -22,6 +38,8 @@ services:
       OBSERVER_CONTAINER_BACKEND: ${OBSERVER_CONTAINER_BACKEND:?required}
       OBSERVER_CONTAINER_DB: ${OBSERVER_CONTAINER_DB:?required}
       OBSERVER_CONTAINER_MAIL_WORKER: ${OBSERVER_CONTAINER_MAIL_WORKER:?required}
+    depends_on:
+      observer-state-init: {condition: service_completed_successfully}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /run/plenora-cockpit/backup-status.json:/status/backup-status.json:ro

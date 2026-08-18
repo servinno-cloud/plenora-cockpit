@@ -1,6 +1,7 @@
 FROM python:3.12-slim AS base
 WORKDIR /app
-RUN useradd --create-home --uid 10003 observer
+RUN groupadd --gid 10003 observer \
+    && useradd --create-home --uid 10003 --gid 10003 observer
 COPY --chown=observer:observer observer/server.py ./
 COPY --chown=observer:observer observer/publisher.py ./publisher.py
 COPY --chown=observer:observer observer/pyproject.toml ./
