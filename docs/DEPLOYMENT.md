@@ -17,6 +17,16 @@ De helper weigert een bestaande `.env.deploy`. Alleen een bewuste
 zet mode `0600` en valideert de resulterende production Composeconfig. Plenora observercredentials
 blijven leeg totdat de afzonderlijke VPS-1-koppeling wordt geprovisioned.
 
+Maak na het starten van `cockpit-backend` de eerste OWNER interactief aan zonder de env-file te wijzigen:
+
+```bash
+cd /opt/plenora-cockpit/app
+bash deploy/bootstrap-owner.sh
+```
+
+Het wachtwoord wordt verborgen gelezen en uitsluitend via naamgebaseerde environment-forwarding aan
+het eenmalige CLI-proces gegeven. Het verschijnt niet in argv, logs, shell history of `.env.deploy`.
+
 ## Topologie
 
 - `cockpit-db` staat alleen intern en heeft geen hostpoort.
@@ -32,16 +42,16 @@ healthchecks en resourcegrenzen. PostgreSQL behoudt uitsluitend zijn datavolume.
 
 ## Eerste OWNER
 
-Er is geen registratie en er zijn geen defaultcredentials. Zet alleen tijdelijk de bootstrap-email en
-voer interactief uit:
+Er is geen registratie en er zijn geen defaultcredentials. Gebruik na het starten van
+`cockpit-backend` uitsluitend de interactieve helper:
 
 ```bash
-docker compose --env-file .env.deploy -f docker-compose.deploy.yml run --rm \
-  cockpit-backend python -m app.cli create-owner --email owner@example.invalid
+bash deploy/bootstrap-owner.sh
 ```
 
-Voer het wachtwoord via de verborgen prompt in en verwijder bootstrapconfig daarna. Een tweede OWNER
-wordt geweigerd. Productie vereist HTTPS-origin, Secure/SameSite Strict cookies, CSRF en rate limiting.
+De helper geeft de bootstrapwaarden alleen door aan `python -m app.cli create-owner`, controleert dat
+`.env.deploy` niet is gewijzigd en weigert een tweede OWNER. Productie vereist HTTPS-origin,
+Secure/SameSite Strict cookies, CSRF en rate limiting.
 
 ## Caddy, backup en rollback
 
