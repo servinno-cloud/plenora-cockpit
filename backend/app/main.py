@@ -4,6 +4,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, EmailStr
@@ -55,6 +57,26 @@ if settings.cors_origins:
         allow_credentials=True,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-CSRF-Token"],
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_ingest_validation_error(request: Request, exc: RequestValidationError):
+    if not request.url.path.startswith("/ingest/v1/"):
+        return await request_validation_exception_handler(request, exc)
+    locations = [tuple(error.get("loc", ())) for error in exc.errors()]
+    field = next((str(location[-1]) for location in locations if location), "")
+    codes = {
+        "collector_version": "snapshot_invalid.collector_version",
+        "signal": "snapshot_invalid.observation_signal",
+        "value": "snapshot_invalid.text_value",
+        "code": "snapshot_invalid.message_code",
+        "source": "snapshot_invalid.source",
+        "target": "snapshot_invalid.target",
+    }
+    return JSONResponse(
+        status_code=422,
+        content={"error_code": codes.get(field, "snapshot_invalid.field_type")},
     )
 
 

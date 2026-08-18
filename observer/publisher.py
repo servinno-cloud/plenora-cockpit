@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -11,6 +12,15 @@ from server import HOST_STATUS, live_services, read_closed_json
 from src.probes import backup_probe, database_connection_probe
 
 MAX_PENDING = 50
+REJECTION_CODES = {
+    "snapshot_invalid.collector_version",
+    "snapshot_invalid.observation_signal",
+    "snapshot_invalid.text_value",
+    "snapshot_invalid.message_code",
+    "snapshot_invalid.source",
+    "snapshot_invalid.target",
+    "snapshot_invalid.field_type",
+}
 
 
 def now() -> str:
@@ -105,7 +115,7 @@ def build_snapshot(config, sequence):
         "environment_id": config["environment_id"],
         "sequence": sequence,
         "generated_at": now(),
-        "collector_version": config["release"],
+        "collector_version": config["release"][:32],
         "observations": observations,
     }
 
@@ -120,6 +130,26 @@ def send(snapshot, config):
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 202:
             raise RuntimeError("ingest rejected")
+
+
+def rejection_code(error):
+    if error.code != 422:
+        return {
+            400: "invalid_envelope",
+            409: "sequence_replayed",
+            413: "snapshot_too_large",
+        }.get(error.code, "ingest_rejected")
+    try:
+        raw = error.read(257)
+        if len(raw) > 256:
+            return "snapshot_invalid.field_type"
+        response = json.loads(raw)
+        code = response.get("error_code")
+        if code is None and isinstance(response.get("detail"), dict):
+            code = response["detail"].get("error_code")
+        return code if code in REJECTION_CODES else "snapshot_invalid.field_type"
+    except (AttributeError, ValueError, TypeError, json.JSONDecodeError):
+        return "snapshot_invalid.field_type"
 
 
 def load_state(path):
@@ -149,6 +179,10 @@ def run_once(config, state_path=Path("/state/state.json")):
         except urllib.error.HTTPError as error:
             if error.code not in {400, 409, 413, 422}:
                 break
+            print(
+                f"snapshot rejected status={error.code} error_code={rejection_code(error)}",
+                file=sys.stderr,
+            )
         except OSError:
             break
         state["pending"].remove(item)

@@ -292,10 +292,21 @@ def test_ingest_rejects_credentials_schema_and_write_routes(client, db):
     body = payload(environment, collector)
     assert post(client, environment, body, "wrong").status_code == 401
     body["observations"][0]["recipient_email"] = "private@example.com"
-    assert post(client, environment, body).status_code == 422
+    response = post(client, environment, body)
+    assert response.status_code == 422
+    assert response.json() == {"error_code": "snapshot_invalid.field_type"}
     unknown = payload(environment, collector)
     unknown["observations"][0]["signal"] = "filesystem.arbitrary_read"
-    assert post(client, environment, unknown).status_code == 422
+    response = post(client, environment, unknown)
+    assert response.status_code == 422
+    assert response.json() == {"error_code": "snapshot_invalid.observation_signal"}
+    invalid_text = payload(
+        environment, collector, signal="service.health", value="secret-internal-state",
+        target="backend", source="service_boundary",
+    )
+    response = post(client, environment, invalid_text)
+    assert response.status_code == 422
+    assert response.json() == {"error_code": "snapshot_invalid.text_value"}
     for path in (
         "/api/remediate",
         "/api/actions",
@@ -344,10 +355,79 @@ def test_external_production_snapshot_passes_snapshot_v1_validation(client, db):
         }
         for signal, value in (("collector.sequence", 1), ("collector.status", "online"))
     ]
-    assert post(client, environment, body).status_code == 422
+    response = post(client, environment, body)
+    assert response.status_code == 422
+    assert response.json() == {"error_code": "snapshot_invalid.collector_version"}
     body["collector_version"] = body["collector_version"][:32]
     assert post(client, environment, body).status_code == 202
     assert db.scalar(select(func.count()).select_from(Observation)) == 7
+
+
+def test_exact_production_observer_snapshot_is_accepted(client, db):
+    environment, collector = setup_monitoring(db)
+    for key in ("caddy", "frontend", "db", "mail-worker", "observer"):
+        db.add(Target(environment_id=environment.id, key=key, name=key, component="Services"))
+    db.commit()
+    current = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+    def item(target, signal, source, value, state="HEALTHY", unit=None):
+        return {"target": target, "signal": signal, "source": source,
+                "observed_at": current, "state": state,
+                "code": "probe_ok" if state == "HEALTHY" else "probe_failed",
+                "message": "Meting uitgevoerd", "value": value, "unit": unit}
+
+    observations = [
+        item("backups", "backup.last_attempt_at", "backup_status_file", current),
+        item("backups", "backup.last_success_at", "backup_status_file", current),
+        item("backups", "backup.status", "backup_status_file", "success"),
+        item("backups", "backup.backup_id", "backup_status_file", "2026-08-18T120000Z"),
+        item("backups", "backup.database_bytes", "backup_status_file", 1024),
+        item("backups", "backup.media_bytes", "backup_status_file", 2048),
+        item("backups", "backup.checksum_verified", "backup_status_file", True),
+        item("backups", "backup.git_commit", "backup_status_file", "unknown"),
+        item("backups", "backup.success_age_seconds", "backup_status_file", 0, unit="s"),
+        item("host", "host.uptime_seconds", "host_metrics", 86400, unit="s"),
+        item("host", "disk.root.used_bytes", "host_metrics", 4000, unit="bytes"),
+        item("host", "disk.root.free_bytes", "host_metrics", 6000, unit="bytes"),
+        item("host", "disk.root.inode_used_percent", "host_metrics", 10.0, unit="percent"),
+        item("host", "disk.backup.used_bytes", "host_metrics", 5000, unit="bytes"),
+        item("host", "disk.backup.free_bytes", "host_metrics", 15000, unit="bytes"),
+        item("host", "disk.backup.inode_used_percent", "host_metrics", 5.0, unit="percent"),
+        item("host", "host.load_1m", "host_metrics", 0.1),
+        item("host", "host.load_5m", "host_metrics", 0.2),
+        item("host", "host.load_15m", "host_metrics", 0.3),
+        item("database", "db.version_major", "database_contract", 16),
+        item("database", "db.size_bytes", "database_contract", 67108864),
+        item("database", "db.connections_percent", "database_contract", 12.5),
+        item("database", "db.django_migration_count", "database_contract", 42),
+        item("database", "db.migration_current", "database_contract", None, "UNKNOWN"),
+        item("database", "db.reachable", "database_contract", True),
+        item("database", "db.latency_ms", "database_contract", 8),
+    ]
+    for target in ("caddy", "frontend", "backend", "db", "mail-worker"):
+        observations.extend([
+            item(target, "service.running", "service_boundary", True),
+            item(target, "service.health", "service_boundary", "healthy"),
+            item(target, "service.restart_count", "service_boundary", 0),
+            item(target, "service.started_at", "service_boundary", current),
+            item(target, "service.image_identifier", "service_boundary",
+                 "sha256:0123456789abcdef"),
+        ])
+    observations.extend([
+        item("mail", "mail.provider_state", "mail_contract", None, "UNKNOWN"),
+        item("observer", "collector.sequence", "collector_self", 1),
+        item("observer", "collector.status", "collector_self", "online"),
+    ])
+    body = payload(environment, collector)
+    body["collector_version"] = "0123456789abcdef0123456789abcdef"
+    body["observations"] = observations
+    response = post(client, environment, body)
+    assert response.status_code == 202
+    assert body["collector_version"] == "0123456789abcdef0123456789abcdef"
+    values = {item["signal"]: item["value"] for item in body["observations"]}
+    assert values["backup.git_commit"] == "unknown"
+    assert values["db.django_migration_count"] == 42
+    assert values["db.migration_current"] is None
 
 
 def test_collector_secret_rotation_preserves_binding_and_sequence(client, db, monkeypatch, capsys):

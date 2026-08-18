@@ -82,6 +82,7 @@ def backup_probe(path: str, target="backups", now=None):
     try:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         allowed = {
+            "format_version",
             "last_attempt_at",
             "last_success_at",
             "status",
@@ -90,10 +91,24 @@ def backup_probe(path: str, target="backups", now=None):
             "media_bytes",
             "checksum_verified",
             "git_commit",
+            "error_code",
         }
-        if not isinstance(raw, dict) or any(k not in allowed for k in raw):
+        if not isinstance(raw, dict) or set(raw) != allowed or raw["format_version"] != 1:
             raise ValueError
-        result = [_obs(target, f"backup.{k}", "backup_status_file", v) for k, v in raw.items()]
+        published = (
+            "last_attempt_at",
+            "last_success_at",
+            "status",
+            "backup_id",
+            "database_bytes",
+            "media_bytes",
+            "checksum_verified",
+            "git_commit",
+        )
+        result = [
+            _obs(target, f"backup.{key}", "backup_status_file", raw[key])
+            for key in published
+        ]
         success = datetime.fromisoformat(str(raw["last_success_at"]).replace("Z", "+00:00"))
         result.append(
             _obs(

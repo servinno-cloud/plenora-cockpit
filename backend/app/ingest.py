@@ -112,7 +112,9 @@ class ObservationBody(BaseModel):
                 raise ValueError("backup status is not allowlisted")
             elif signal == "backup.backup_id" and not re.fullmatch(r"[0-9A-Za-z._-]{1,80}", value):
                 raise ValueError("backup id is not safe")
-            elif signal == "backup.git_commit" and not re.fullmatch(r"[0-9a-f]{7,64}", value):
+            elif signal == "backup.git_commit" and not (
+                value == "unknown" or re.fullmatch(r"[0-9a-f]{7,64}", value)
+            ):
                 raise ValueError("git commit is not safe")
             elif signal == "service.started_at":
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -196,7 +198,10 @@ async def ingest(
             select(Target).where(Target.environment_id == environment_id, Target.key == item.target)
         )
         if not target:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown target")
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                {"error_code": "snapshot_invalid.target"},
+            )
         state, code = classify(item.signal, item.value, item.state)
         observation = Observation(
             snapshot_id=snap.id,

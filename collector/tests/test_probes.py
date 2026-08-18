@@ -10,10 +10,16 @@ def test_backup_probe_reads_only_allowlisted_status(tmp_path):
     path.write_text(
         json.dumps(
             {
+                "format_version": 1,
+                "last_attempt_at": now.isoformat(),
                 "last_success_at": (now - timedelta(hours=27)).isoformat(),
                 "status": "success",
                 "backup_id": "safe-id",
+                "database_bytes": 1024,
+                "media_bytes": 2048,
                 "checksum_verified": True,
+                "git_commit": "unknown",
+                "error_code": "",
             }
         )
     )
@@ -22,6 +28,9 @@ def test_backup_probe_reads_only_allowlisted_status(tmp_path):
         "backup.status",
         "backup.success_age_seconds",
     }
+    assert next(
+        item["value"] for item in observations if item["signal"] == "backup.git_commit"
+    ) == "unknown"
     assert not any("path" in str(item) or "email" in str(item) for item in observations)
 
 

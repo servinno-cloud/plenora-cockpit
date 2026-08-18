@@ -1,4 +1,6 @@
+import io
 import json
+import urllib.error
 
 import pytest
 
@@ -54,3 +56,36 @@ def test_snapshot_keeps_mail_unknown_without_contract(monkeypatch):
     mail = next(item for item in publisher.build_snapshot(config, 1)["observations"]
                 if item["target"] == "mail")
     assert mail["state"] == "UNKNOWN" and mail["code"] == "integration_disabled"
+
+
+def test_release_is_bounded_to_snapshot_contract(monkeypatch):
+    monkeypatch.setattr(publisher, "backup_probe", lambda *args: [])
+    monkeypatch.setattr(publisher, "host_observations", lambda: [])
+    monkeypatch.setattr(publisher, "database_connection_probe", lambda *args: [])
+    monkeypatch.setattr(publisher, "service_observations", lambda: [])
+    config = {"backup_status_path": "exact", "database_url": "db", "collector_id": "c",
+              "environment_id": "e", "release": "a" * 40}
+    assert publisher.build_snapshot(config, 1)["collector_version"] == "a" * 32
+
+
+def test_safe_422_diagnostic_logs_only_closed_code(monkeypatch, tmp_path, capsys):
+    secret = "synthetic-secret-never-log-000000000000"
+    payload_marker = "synthetic-payload-never-log"
+    monkeypatch.setattr(
+        publisher,
+        "build_snapshot",
+        lambda config, sequence: {"snapshot_id": payload_marker, "sequence": sequence},
+    )
+
+    def reject(*args):
+        body = io.BytesIO(b'{"error_code":"snapshot_invalid.collector_version"}')
+        raise urllib.error.HTTPError("https://ingest", 422, "invalid", {}, body)
+
+    monkeypatch.setattr(publisher, "send", reject)
+    state = publisher.run_once({"secret": secret}, tmp_path / "state.json")
+    diagnostic = capsys.readouterr().err.strip()
+    assert diagnostic == (
+        "snapshot rejected status=422 error_code=snapshot_invalid.collector_version"
+    )
+    assert secret not in diagnostic and payload_marker not in diagnostic
+    assert state == {"sequence": 1, "pending": []}
