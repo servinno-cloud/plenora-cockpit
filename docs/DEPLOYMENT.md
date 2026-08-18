@@ -18,7 +18,11 @@ ingelezen en atomisch in een mode-0600 env-file geschreven. De helper genereert 
 Maak op VPS 2 een unieke UUIDv4 en 32-byte hex-token in een root-only tijdelijk bestand, seed die
 observeridentiteit in Cockpit en draag het bestand éénmalig via het beheertransport over naar root op
 VPS 1. Verwijder het overdrachtsbestand na succesvolle Composevalidatie. Maak de database-DSN apart
-met `deploy/sql/create-monitoring-role.sql`; gebruik nooit de Plenora-applicatiecredential.
+met één veilig interactief commando; gebruik nooit de Plenora-applicatiecredential:
+
+```bash
+cd /opt/plenora-observer/app && bash deploy/create-monitoring-role.sh
+```
 
 Initialiseer op VPS 2 de production environment één keer vanuit de repositoryroot:
 

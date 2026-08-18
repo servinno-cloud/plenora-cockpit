@@ -22,6 +22,10 @@ class MonitoringSqlContractTests(unittest.TestCase):
         ):
             self.assertIn(attribute, sql)
         self.assertNotIn("alembic_version", sql)
+        self.assertNotIn("password", sql)
+        self.assertNotIn("\\prompt", sql)
+        self.assertTrue(sql.lstrip().startswith("begin;"))
+        self.assertIn("commit;", sql)
         grants = re.findall(r"grant select on table\s+([^\s;]+)", sql)
         self.assertEqual(grants, ["public.django_migrations"])
         for business_table in ("people", "person", "shift", "leave", "mail"):

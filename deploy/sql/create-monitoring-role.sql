@@ -1,10 +1,5 @@
-\if :{?monitor_password}
-\else
-\prompt -W 'New monitoring role password: ' monitor_password
-\endif
-
 BEGIN;
-CREATE ROLE plenora_cockpit_monitor LOGIN PASSWORD :'monitor_password'
+CREATE ROLE plenora_cockpit_monitor LOGIN
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 REVOKE ALL ON DATABASE :"monitor_database" FROM plenora_cockpit_monitor;
 GRANT CONNECT ON DATABASE :"monitor_database" TO plenora_cockpit_monitor;
