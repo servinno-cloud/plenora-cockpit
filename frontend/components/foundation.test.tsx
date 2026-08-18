@@ -1,7 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppShell } from "./AppShell";
-import { serviceSummary } from "./DashboardClient";
+import { displayRelease, serviceSummary } from "./DashboardClient";
 import { LoginForm } from "./LoginForm";
 import { StatusGrid } from "./StatusGrid";
 
@@ -35,13 +35,21 @@ test("healthy database renders metrics and keeps migration status separate",()=>
 
 test("mail disabled is understandable and no unavailable metrics are invented",()=>{
   render(<StatusGrid observations={[
-    {...base,target:"mail",component:"Mail",signal:"mail.provider_state",state:"UNKNOWN",code:"integration_disabled",source:"mail_contract"},
+    {...base,target:"mail",component:"Mail",signal:"mail.provider_state",state:"UNKNOWN",code:"signal_unknown",message:"Integratie nog niet gekoppeld",source:"mail_contract"},
     {...base,target:"web",component:"Web",signal:"https.latency_ms",numeric_value:42,unit:"ms",source:"external_https"},
   ]}/>);
   expect(screen.getByText("Integratie nog niet gekoppeld")).toBeInTheDocument();
   expect(screen.getByText("Latency 42 ms")).toBeInTheDocument();
   expect(screen.queryByText(/TLS /)).not.toBeInTheDocument();
   expect(screen.queryByText(/HTTP /)).not.toBeInTheDocument();
+  const mailCard=screen.getByRole("heading",{name:"Mail"}).closest("article");
+  expect(mailCard).not.toBeNull();
+  expect(within(mailCard!).queryByText("Technische signalen actueel")).not.toBeInTheDocument();
+});
+
+test("release presentation shortens only full git hashes",()=>{
+  expect(displayRelease("7cae9fd0123456789abcdef0123456789abcdef0")).toBe("7cae9fd");
+  expect(displayRelease("release-2026.08-production")).toBe("release-2026.08-production");
 });
 
 test("service without healthcheck is healthy when running and unhealthy remains critical",()=>{

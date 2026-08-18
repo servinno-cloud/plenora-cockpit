@@ -58,7 +58,11 @@ export function StatusGrid({observations,componentStates={}}:{observations:Obser
   const derived=matches.length?matches.reduce((worst,item)=>rank[item.state]>rank[worst]?item.state:worst,"HEALTHY"):"UNKNOWN";
   const state=componentStates[name]??derived;
   const metrics=metricLines(name,matches);
-  const disabled=name==="Mail"&&matches.some(item=>item.code==="integration_disabled");
+  const disabled=name==="Mail"&&matches.some(item=>
+    item.signal==="mail.provider_state"&&item.state==="UNKNOWN"&&(
+      item.code==="integration_disabled"||item.message==="Integratie nog niet gekoppeld"
+    )
+  );
   const message=disabled?["Integratie nog niet gekoppeld"]:metrics.length?metrics:matches.length?["Technische signalen actueel"]:["Nog geen verse observatie"];
   return <article className={`status-card state-${state.toLowerCase()}`} key={name}><div><span className="status-dot" />{state}</div><h2>{name}</h2><ul className="metric-list">{message.map(line=><li key={line}>{line}</li>)}</ul></article>})}</section>
 }
