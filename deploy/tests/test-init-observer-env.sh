@@ -14,11 +14,19 @@ cat > "$test_root/bin/git" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' '0123456789abcdef0123456789abcdef01234567'
 EOF
+cat > "$test_root/bin/id" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" == -u ]] && printf '0\n'
+EOF
+cat > "$test_root/bin/stat" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *'.provision'* ]]; then printf '600:0\n'; else /usr/bin/stat "$@"; fi
+EOF
 cat > "$test_root/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 [[ "$*" == *'compose --env-file '*'-f '*'/docker-compose.observer.yml config --quiet' ]]
 EOF
-chmod 700 "$test_root/bin/git" "$test_root/bin/docker"
+chmod 700 "$test_root/bin/git" "$test_root/bin/docker" "$test_root/bin/id" "$test_root/bin/stat"
 export PATH="$test_root/bin:$PATH"
 
 environment_id='11111111-1111-4111-8111-111111111111'
@@ -27,9 +35,10 @@ observer_token='synthetic-observer-token-0000000000000000'
 database_url='postgresql://monitor:synthetic@db/plenora'
 printf 'PLENORA_MONITOR_DATABASE_URL=%s\n' "$database_url" > "$test_root/.observer-database.provision"
 chmod 600 "$test_root/.observer-database.provision"
-output="$(printf '%s\n%s\n%s\n' \
-  "$environment_id" "$observer_id" "$observer_token" | \
-  bash "$test_root/deploy/init-observer-env.sh" 2>&1)"
+printf 'COCKPIT_ENVIRONMENT_ID=%s\nPLENORA_OBSERVER_ID=%s\nPLENORA_OBSERVER_TOKEN=%s\n' \
+  "$environment_id" "$observer_id" "$observer_token" > "$test_root/.observer-identity.provision"
+chmod 600 "$test_root/.observer-identity.provision"
+output="$(bash "$test_root/deploy/init-observer-env.sh" 2>&1)"
 
 [[ "$output" == *'Observer production environment initialized successfully.'* ]]
 [[ "$output" != *"$observer_token"* && "$output" != *"$database_url"* ]]
@@ -47,12 +56,18 @@ grep -Fxq "PLENORA_OBSERVER_ID=$observer_id" "$test_root/.env.observer"
 grep -Fxq "PLENORA_OBSERVER_TOKEN=$observer_token" "$test_root/.env.observer"
 grep -Fxq "PLENORA_MONITOR_DATABASE_URL=$database_url" "$test_root/.env.observer"
 [[ ! -e "$test_root/.observer-database.provision" ]]
+[[ ! -e "$test_root/.observer-identity.provision" ]]
 
 printf 'PLENORA_MONITOR_DATABASE_URL=%s\n' "$database_url" > "$test_root/.observer-database.provision"
 chmod 600 "$test_root/.observer-database.provision"
+printf 'COCKPIT_ENVIRONMENT_ID=%s\nPLENORA_OBSERVER_ID=%s\nPLENORA_OBSERVER_TOKEN=%s\n' \
+  "$environment_id" "$observer_id" "$observer_token" > "$test_root/.observer-identity.provision"
+chmod 600 "$test_root/.observer-identity.provision"
 if bash "$test_root/deploy/init-observer-env.sh" >/dev/null 2>&1; then
   printf 'existing observer env was overwritten without --force\n' >&2
   exit 1
 fi
+[[ -f "$test_root/.observer-database.provision" ]]
+[[ -f "$test_root/.observer-identity.provision" ]]
 
 printf 'observer env bootstrap tests passed\n'

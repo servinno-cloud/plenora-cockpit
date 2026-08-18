@@ -9,6 +9,7 @@ template="$repo_root/.env.observer.example"
 target="$repo_root/.env.observer"
 compose_file="$repo_root/docker-compose.observer.yml"
 database_provision="$repo_root/.observer-database.provision"
+identity_provision="$repo_root/.observer-identity.provision"
 force=false
 temporary=""
 environment_id=""
@@ -29,33 +30,49 @@ case "${1:-}" in
 esac
 (( $# <= 1 )) || exit 2
 
-for command in docker git mktemp chmod mv stat rm; do
+for command in docker git mktemp chmod mv stat rm id; do
   command -v "$command" >/dev/null 2>&1 || {
     printf 'Required command is unavailable: %s\n' "$command" >&2
     exit 1
   }
 done
+[[ "$(id -u)" == 0 ]] || {
+  printf 'Observer environment provisioning must run as root.\n' >&2
+  exit 1
+}
 [[ -r "$template" && -f "$compose_file" ]] || {
   printf 'Observer template or Compose file is missing.\n' >&2
   exit 1
 }
-[[ -f "$database_provision" && ! -L "$database_provision" ]] || {
-  printf 'Private database provisioningbestand ontbreekt of is ongeldig.\n' >&2
-  exit 1
-}
-[[ "$(stat -c '%a' "$database_provision")" == 600 ]] || {
-  printf 'Database provisioningbestand moet mode 0600 hebben.\n' >&2
-  exit 1
-}
+for provision in "$database_provision" "$identity_provision"; do
+  [[ -f "$provision" && ! -L "$provision" ]] || {
+    printf 'Private provisioningbestand ontbreekt of is ongeldig.\n' >&2
+    exit 1
+  }
+  [[ "$(stat -c '%a:%u' "$provision")" == 600:0 ]] || {
+    printf 'Provisioningbestanden moeten root-owned mode 0600 zijn.\n' >&2
+    exit 1
+  }
+done
 if [[ -e "$target" && "$force" != true ]]; then
   printf '.env.observer already exists; use --force explicitly.\n' >&2
   exit 1
 fi
 
-IFS= read -r -p 'Cockpit environment UUID: ' environment_id
-IFS= read -r -p 'Provisioned observer UUID: ' observer_id
-IFS= read -r -s -p 'Provisioned observer token: ' observer_token
-printf '\n' >&2
+mapfile -t identity_lines < "$identity_provision"
+[[ ${#identity_lines[@]} == 3 ]] || {
+  printf 'Observer identity provisioningbestand heeft een ongeldig formaat.\n' >&2
+  exit 1
+}
+[[ "${identity_lines[0]}" == COCKPIT_ENVIRONMENT_ID=* &&
+   "${identity_lines[1]}" == PLENORA_OBSERVER_ID=* &&
+   "${identity_lines[2]}" == PLENORA_OBSERVER_TOKEN=* ]] || {
+  printf 'Observer identity provisioningbestand heeft een ongeldig formaat.\n' >&2
+  exit 1
+}
+environment_id="${identity_lines[0]#COCKPIT_ENVIRONMENT_ID=}"
+observer_id="${identity_lines[1]#PLENORA_OBSERVER_ID=}"
+observer_token="${identity_lines[2]#PLENORA_OBSERVER_TOKEN=}"
 IFS= read -r database_line < "$database_provision"
 [[ "$database_line" == PLENORA_MONITOR_DATABASE_URL=* ]] || {
   printf 'Database provisioningbestand heeft een ongeldig formaat.\n' >&2
@@ -105,5 +122,5 @@ docker compose --env-file "$temporary" -f "$compose_file" config --quiet
 mv -f -- "$temporary" "$target"
 temporary=""
 chmod 600 "$target"
-rm -f -- "$database_provision"
+rm -f -- "$database_provision" "$identity_provision"
 printf 'Observer production environment initialized successfully.\n'
