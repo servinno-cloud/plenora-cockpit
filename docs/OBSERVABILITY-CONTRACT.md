@@ -97,6 +97,14 @@ migrationnamen worden niet gepubliceerd. Zonder expliciete verwachte releasemark
 niet weten welke Django migration de applicatie verwacht. `db.migration_current` blijft daarom
 expliciet `UNKNOWN`; alleen het bestaan of de omvang van de tabel wordt nooit als current behandeld.
 
+Voor component-health telt deze bewust optionele UNKNOWN niet als database-uitval. Database is
+HEALTHY wanneer alle beschikbare operationele checks (`reachable`, major version, latency, omvang,
+connectionpercentage en migrationcount) gezond zijn. Een expliciete migration-mismatch blijft wel
+WARNING. Service `health=none` betekent dat de container draait zonder Docker-healthcheck en wordt
+afzonderlijk getoond; alleen `running=false`, `unhealthy` of langdurig `starting` duidt een storing aan.
+Overall wordt bepaald door Web, Backend, Database, Backups, Host en Services. Mail en een onbekende
+verwachte migratiestatus zijn optioneel totdat hun integratie expliciet is gekoppeld.
+
 ### Externe web/backend
 
 | Signal | Waarden | Standaard policy |

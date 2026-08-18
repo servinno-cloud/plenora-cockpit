@@ -253,6 +253,9 @@ def test_operator_api_exposes_health_and_history(client, db):
         )
     owner(db)
     assert login(client).status_code == 200
+    environments = client.get("/api/environments").json()
+    assert environments[0]["name"] == "Production"
+    assert environments[0]["product_name"] == "Plenora"
     snapshot = client.get(f"/api/environments/{environment.id}/snapshot").json()
     assert snapshot["overall_state"] == "CRITICAL"
     assert snapshot["observations"][0]["code"] == "web_unhealthy"
@@ -485,3 +488,7 @@ def test_django_migration_metadata_does_not_claim_unknown_expectation_is_healthy
     states = {item.signal: item.state.value for item in observations}
     assert states["db.django_migration_count"] == "HEALTHY"
     assert states["db.migration_current"] == "UNKNOWN"
+    owner(db)
+    assert login(client).status_code == 200
+    snapshot = client.get(f"/api/environments/{environment.id}/snapshot").json()
+    assert snapshot["component_states"]["Database"] == "HEALTHY"

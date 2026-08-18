@@ -89,3 +89,19 @@ def test_safe_422_diagnostic_logs_only_closed_code(monkeypatch, tmp_path, capsys
     )
     assert secret not in diagnostic and payload_marker not in diagnostic
     assert state == {"sequence": 1, "pending": []}
+
+
+def test_running_service_without_docker_healthcheck_is_not_a_failure(monkeypatch):
+    monkeypatch.setattr(
+        publisher,
+        "live_services",
+        lambda: {"services": [{
+            "service_key": "caddy", "running": True, "health": "none",
+            "restart_count": 0, "started_at": "2026-08-18T12:00:00Z",
+            "image_identifier": "sha256:0123456789abcdef",
+        }]},
+    )
+    observations = publisher.service_observations()
+    states = {item["signal"]: item["state"] for item in observations}
+    assert states["service.running"] == "HEALTHY"
+    assert states["service.health"] == "UNKNOWN"

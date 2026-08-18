@@ -67,6 +67,20 @@ def classify(
         if float(value) > 93600:
             return HealthState.WARNING, "backup_unhealthy"
         return HealthState.HEALTHY, "ok"
+    if signal == "service.running":
+        return (
+            (HealthState.HEALTHY, "ok")
+            if value is True
+            else (HealthState.CRITICAL, "service_unhealthy")
+        )
+    if signal == "service.health":
+        states = {
+            "healthy": (HealthState.HEALTHY, "ok"),
+            "unhealthy": (HealthState.CRITICAL, "service_unhealthy"),
+            "starting": (HealthState.DEGRADED, "service_unhealthy"),
+            "none": (HealthState.UNKNOWN, "signal_unknown"),
+        }
+        return states.get(str(value), (HealthState.UNKNOWN, "signal_unknown"))
     if signal in {
         "disk.root.used_percent",
         "disk.root.inodes_used_percent",

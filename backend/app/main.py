@@ -30,6 +30,7 @@ from .auth import (
 )
 from .config import Settings, get_settings
 from .database import get_db
+from .health_semantics import aggregate_health
 from .ingest import router as ingest_router
 from .logging import configure_logging
 from .models import (
@@ -243,7 +244,13 @@ def environments(_: Operator = Depends(current_operator), db: Session = Depends(
         select(Environment).options(selectinload(Environment.product)).order_by(Environment.name)
     )
     return [
-        {"id": item.id, "code": item.code, "name": item.name, "product_id": item.product_id}
+        {
+            "id": item.id,
+            "code": item.code,
+            "name": item.name,
+            "product_id": item.product_id,
+            "product_name": item.product.name,
+        }
         for item in db.scalars(query)
     ]
 
@@ -281,7 +288,6 @@ def snapshot(
     for item in observations:
         latest.setdefault((item.target_id, item.signal), item)
     current = list(latest.values())
-    order = {"HEALTHY": 0, "DEGRADED": 1, "WARNING": 2, "UNKNOWN": 3, "CRITICAL": 4}
     now = datetime.now(UTC)
     stale = {
         item.id: now
@@ -293,18 +299,18 @@ def snapshot(
         > timedelta(minutes=5)
         for item in current
     }
-    overall = (
-        "UNKNOWN"
-        if any(stale.values())
-        else max(
-            (item.state.value for item in current),
-            key=lambda value: order[value],
-            default="UNKNOWN",
-        )
-    )
+    component_states, service_states, overall = aggregate_health(current, stale, targets)
+    product = db.get(Product, environment.product_id)
     return {
         "environment_id": environment.id,
+        "environment": {
+            "code": environment.code,
+            "name": environment.name,
+            "product": {"id": product.id, "name": product.name} if product else None,
+        },
         "overall_state": overall,
+        "component_states": component_states,
+        "service_states": service_states,
         "data_mode": settings.infrastructure_mode,
         "collector": {
             "status": "UNKNOWN" if not collector or not collector.last_seen_at else "ONLINE",

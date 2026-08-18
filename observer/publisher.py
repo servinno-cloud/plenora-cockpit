@@ -89,7 +89,11 @@ def service_observations():
             if key == "running" and value is False:
                 state = "CRITICAL"
             elif key == "health" and value in {"unhealthy", "starting", "none"}:
-                state = "CRITICAL" if value == "unhealthy" else "DEGRADED"
+                state = (
+                    "CRITICAL" if value == "unhealthy"
+                    else "DEGRADED" if value == "starting"
+                    else "UNKNOWN"
+                )
             elif key == "restart_count" and value > 0:
                 state = "WARNING"
             result.append(observation(target, f"service.{key}", "service_boundary", value, state))
