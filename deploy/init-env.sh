@@ -70,11 +70,93 @@ random_hex() {
   fi
 }
 
+env_value() {
+  local file="$1"
+  local wanted="$2"
+  local line key
+  [[ -r "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    key="${line%%=*}"
+    if [[ "$key" == "$wanted" ]]; then
+      printf '%s' "${line#*=}"
+      return 0
+    fi
+  done < "$file"
+}
+
+existing_or_random_hex() {
+  local key="$1"
+  local bytes="$2"
+  local value=""
+  if [[ "$had_existing" == true ]]; then
+    value="$(env_value "$backup" "$key")"
+  fi
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
+  else
+    random_hex "$bytes"
+  fi
+}
+
+uuid_v4() {
+  local raw
+  raw="$(random_hex 16)"
+  printf '%s-%s-4%s-8%s-%s\n' \
+    "${raw:0:8}" "${raw:8:4}" "${raw:13:3}" "${raw:17:3}" "${raw:20:12}"
+}
+
+existing_monitoring_value() {
+  local canonical="$1"
+  local legacy="$2"
+  local value=""
+  if [[ "$had_existing" == true ]]; then
+    value="$(env_value "$backup" "$canonical")"
+    if [[ -z "$value" && -n "$legacy" ]]; then
+      value="$(env_value "$backup" "$legacy")"
+    fi
+  fi
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
+  else
+    uuid_v4
+  fi
+}
+
 postgres_db="plenora_cockpit"
 postgres_user="plenora_cockpit"
-postgres_password="$(random_hex 32)"
-cockpit_secret_key="$(random_hex 48)"
-collector_token="$(random_hex 32)"
+postgres_password="$(existing_or_random_hex POSTGRES_PASSWORD 32)"
+cockpit_secret_key="$(existing_or_random_hex COCKPIT_SECRET_KEY 48)"
+collector_secret="$(existing_or_random_hex COCKPIT_MONITORING_COLLECTOR_SECRET 32)"
+if [[ "$had_existing" == true && -z "$(env_value "$backup" COCKPIT_MONITORING_COLLECTOR_SECRET)" ]]; then
+  legacy_collector_secret="$(env_value "$backup" COLLECTOR_TOKEN)"
+  if [[ -n "$legacy_collector_secret" ]]; then
+    collector_secret="$legacy_collector_secret"
+  fi
+fi
+monitoring_environment_id="$(existing_monitoring_value COCKPIT_MONITORING_ENVIRONMENT_ID COLLECTOR_ENVIRONMENT_ID)"
+monitoring_collector_id="$(existing_monitoring_value COCKPIT_MONITORING_COLLECTOR_ID COLLECTOR_ID)"
+observer_id=""
+observer_token=""
+if [[ "$had_existing" == true ]]; then
+  observer_id="$(env_value "$backup" PLENORA_OBSERVER_ID)"
+  observer_token="$(env_value "$backup" PLENORA_OBSERVER_TOKEN)"
+fi
+if [[ ! "$monitoring_environment_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] ||
+   [[ ! "$monitoring_collector_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+  printf 'Monitoring identifiers must be valid UUIDv4 values.\n' >&2
+  exit 1
+fi
+if (( ${#collector_secret} < 32 )); then
+  printf 'Monitoring collector secret must contain at least 32 characters.\n' >&2
+  exit 1
+fi
+if [[ -n "$observer_id" || -n "$observer_token" ]]; then
+  if [[ ! "$observer_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] ||
+     (( ${#observer_token} < 32 )); then
+    printf 'Observer identity and 32-character secret must both be valid when configured.\n' >&2
+    exit 1
+  fi
+fi
 release="$(git -C "$repo_root" rev-parse --verify HEAD)"
 database_url="postgresql+psycopg://${postgres_user}:${postgres_password}@cockpit-db:5432/${postgres_db}"
 
@@ -89,10 +171,13 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     POSTGRES_USER) printf 'POSTGRES_USER=%s\n' "$postgres_user" ;;
     POSTGRES_PASSWORD) printf 'POSTGRES_PASSWORD=%s\n' "$postgres_password" ;;
     DATABASE_URL) printf 'DATABASE_URL=%s\n' "$database_url" ;;
-    COLLECTOR_TOKEN) printf 'COLLECTOR_TOKEN=%s\n' "$collector_token" ;;
+    COCKPIT_MONITORING_COLLECTOR_SECRET) printf 'COCKPIT_MONITORING_COLLECTOR_SECRET=%s\n' "$collector_secret" ;;
+    COCKPIT_MONITORING_COLLECTOR_ID) printf 'COCKPIT_MONITORING_COLLECTOR_ID=%s\n' "$monitoring_collector_id" ;;
+    COCKPIT_MONITORING_ENVIRONMENT_ID) printf 'COCKPIT_MONITORING_ENVIRONMENT_ID=%s\n' "$monitoring_environment_id" ;;
     COCKPIT_RELEASE) printf 'COCKPIT_RELEASE=%s\n' "$release" ;;
     COCKPIT_MAIL_INTEGRATION_ENABLED) printf '%s\n' 'COCKPIT_MAIL_INTEGRATION_ENABLED=false' ;;
-    PLENORA_OBSERVER_ID|PLENORA_OBSERVER_TOKEN) printf '%s=\n' "$key" ;;
+    PLENORA_OBSERVER_ID) printf 'PLENORA_OBSERVER_ID=%s\n' "$observer_id" ;;
+    PLENORA_OBSERVER_TOKEN) printf 'PLENORA_OBSERVER_TOKEN=%s\n' "$observer_token" ;;
     *) printf '%s\n' "$line" ;;
   esac
 done < "$template" > "$temporary"

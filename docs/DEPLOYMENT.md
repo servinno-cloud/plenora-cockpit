@@ -14,8 +14,22 @@ bash deploy/init-env.sh
 
 De helper weigert een bestaande `.env.deploy`. Alleen een bewuste
 `bash deploy/init-env.sh --force` vervangt hem. Hij genereert uitsluitend Cockpit-eigen hexsecrets,
-zet mode `0600` en valideert de resulterende production Composeconfig. Plenora observercredentials
-blijven leeg totdat de afzonderlijke VPS-1-koppeling wordt geprovisioned.
+stabiele UUIDv4-identifiers, zet mode `0600` en valideert de resulterende production Composeconfig.
+Bij een `--force`-upgrade blijven bestaande secrets en monitoringidentifiers behouden; de oude
+`COLLECTOR_ID`, `COLLECTOR_ENVIRONMENT_ID` en `COLLECTOR_TOKEN` worden eenmalig naar de canonieke
+`COCKPIT_MONITORING_*`-namen gemigreerd. Dezelfde environment-ID bindt hierdoor de seedrecord,
+collector en ingest-auth. Plenora observercredentials blijven leeg totdat de afzonderlijke
+VPS-1-koppeling wordt geprovisioned.
+
+Upgrade een bestaande VPS-2-config en hermaak daarna de services zodat de canonieke waarden in hun
+procesenvironment terechtkomen:
+
+```bash
+bash deploy/init-env.sh --force
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml up -d --force-recreate
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml exec -T \
+  cockpit-backend python -m app.cli seed-monitoring
+```
 
 Maak na het starten van `cockpit-backend` de eerste OWNER interactief aan zonder de env-file te wijzigen:
 
