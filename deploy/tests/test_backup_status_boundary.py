@@ -17,6 +17,7 @@ SPEC.loader.exec_module(boundary)
 
 def valid_status():
     return {
+        "format_version": 1,
         "last_attempt_at": "2026-08-18T12:00:00Z",
         "last_success_at": "2026-08-18T12:00:00Z",
         "status": "success",
@@ -24,7 +25,8 @@ def valid_status():
         "database_bytes": 123,
         "media_bytes": 456,
         "checksum_verified": True,
-        "git_commit": "abcdef1234567890",
+        "git_commit": "unknown",
+        "error_code": "",
     }
 
 
@@ -49,7 +51,7 @@ class BackupStatusBoundaryTests(unittest.TestCase):
         self.source.write_text(payload, encoding="utf-8")
         self.source.chmod(0o600)
 
-    def test_valid_status_is_atomically_published_with_safe_permissions(self):
+    def test_real_production_status_is_atomically_published_with_safe_permissions(self):
         self.write_source(json.dumps(valid_status()))
         boundary.main()
 
@@ -90,6 +92,38 @@ class BackupStatusBoundaryTests(unittest.TestCase):
     def test_unknown_or_privacy_sensitive_fields_are_rejected(self):
         payload = valid_status() | {"recipient_email": "private@example.invalid"}
         self.assert_rejected_without_partial_output(json.dumps(payload))
+
+    def test_missing_required_field_is_rejected(self):
+        payload = valid_status()
+        del payload["error_code"]
+        self.assert_rejected_without_partial_output(json.dumps(payload))
+
+    def test_malformed_types_are_rejected(self):
+        malformed = (
+            {"format_version": "1"},
+            {"database_bytes": True},
+            {"media_bytes": -1},
+            {"checksum_verified": 1},
+            {"last_success_at": "2026-08-18T12:00:00"},
+            {"status": "partial"},
+            {"git_commit": "branch/main"},
+            {"error_code": "contains spaces"},
+        )
+        for replacement in malformed:
+            with self.subTest(replacement=replacement):
+                self.assert_rejected_without_partial_output(
+                    json.dumps(valid_status() | replacement)
+                )
+
+    def test_known_technical_failure_values_are_allowed(self):
+        payload = valid_status() | {
+            "status": "failed",
+            "git_commit": "abcdef1234567890",
+            "error_code": "pg_dump_failed",
+        }
+        self.write_source(json.dumps(payload))
+        boundary.main()
+        self.assertEqual(json.loads(self.target.read_text()), payload)
 
     @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "O_NOFOLLOW unavailable")
     def test_symlink_source_is_rejected(self):

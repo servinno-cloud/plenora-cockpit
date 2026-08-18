@@ -4,13 +4,14 @@ import os
 import re
 import stat
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 SOURCE = Path("/var/backups/plenora/status.json")
 TARGET = Path("/run/plenora-cockpit/backup-status.json")
 MAX_SOURCE_BYTES = 16 * 1024
 EXPECTED_FIELDS = {
+    "format_version",
     "last_attempt_at",
     "last_success_at",
     "status",
@@ -19,17 +20,22 @@ EXPECTED_FIELDS = {
     "media_bytes",
     "checksum_verified",
     "git_commit",
+    "error_code",
 }
 
 
 def validate(payload: object) -> dict:
     if not isinstance(payload, dict) or set(payload) != EXPECTED_FIELDS:
         raise ValueError("Backup status fields are invalid")
+    if type(payload["format_version"]) is not int or payload["format_version"] != 1:
+        raise ValueError("Backup format version is invalid")
     for field in ("last_attempt_at", "last_success_at"):
         value = payload[field]
         if not isinstance(value, str):
             raise ValueError("Backup timestamp is invalid")
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.utcoffset() != timedelta(0):
+            raise ValueError("Backup timestamp must use UTC")
     if payload["status"] not in {"success", "failed"}:
         raise ValueError("Backup status is invalid")
     if not isinstance(payload["backup_id"], str) or not re.fullmatch(
@@ -43,10 +49,16 @@ def validate(payload: object) -> dict:
             raise ValueError("Backup size is invalid")
     if not isinstance(payload["checksum_verified"], bool):
         raise ValueError("Backup checksum state is invalid")
-    if not isinstance(payload["git_commit"], str) or not re.fullmatch(
-        r"[0-9a-f]{7,64}", payload["git_commit"]
+    git_commit = payload["git_commit"]
+    if not isinstance(git_commit, str) or not (
+        git_commit == "unknown" or re.fullmatch(r"[0-9a-f]{7,64}", git_commit)
     ):
         raise ValueError("Backup release is invalid")
+    error_code = payload["error_code"]
+    if not isinstance(error_code, str) or not (
+        error_code == "" or re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", error_code)
+    ):
+        raise ValueError("Backup error code is invalid")
     return payload
 
 
