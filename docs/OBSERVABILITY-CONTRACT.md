@@ -1,5 +1,8 @@
 # Observabilitycontract
 
+Sprint 5 wijzigt `snapshot.v1` niet. Notificationevents worden uitsluitend door Cockpit afgeleid uit
+de bestaande incidenttransities en worden nooit onderdeel van collector- of observerpayloads.
+
 Sprint 3 production gebruikt echte Web/Backup/Host/Database/Services-bronnen. Hostoutput is beperkt tot
 uptime, root/backup bytes en inodes, load averages en timestamp. Serviceoutput bevat alleen vijf vaste
 keys, running, health, restart count, started-at en gehashte image-ID. Uitgeschakelde Mail-integratie

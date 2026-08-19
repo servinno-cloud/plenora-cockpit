@@ -1,5 +1,13 @@
 # Incidentmodel
 
+## Lifecycle-notificationevents
+
+Alleen `OPENED`, een opwaartse `ESCALATED` severitytransitie en `RESOLVED` maken een outboxevent.
+De unieke sleutel is incident-ID + eventtype en, voor escalatie, de nieuwe severity. Polls,
+idempotente snapshotreplays, verdere failures en verdere healthy observations maken geen event.
+Deliverystatus is `PENDING`, `SENT` of `FAILED`, met attempt count en laatste poging. De outbox bevat
+geen ontvanger, SMTP-secret of ruwe payload; configuratie blijft uitsluitend in de runtimeomgeving.
+
 ## Doel
 
 Incidenten vertalen herhaalde observations naar een stabiele operationele lifecycle. Dezelfde storing

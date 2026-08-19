@@ -356,8 +356,16 @@ def snapshot(
 
 @app.get("/api/incidents")
 def incidents(_: Operator = Depends(current_operator), db: Session = Depends(get_db)):
-    return [
-        {
+    result = []
+    for item in db.scalars(select(Incident).order_by(Incident.last_seen_at.desc()).limit(100)):
+        environment = db.get(Environment, item.environment_id)
+        product = db.get(Product, environment.product_id) if environment else None
+        latest = (
+            db.get(Observation, item.latest_observation_id)
+            if item.latest_observation_id
+            else None
+        )
+        result.append({
             "id": item.id,
             "environment_id": item.environment_id,
             "target_id": item.target_id,
@@ -371,9 +379,42 @@ def incidents(_: Operator = Depends(current_operator), db: Session = Depends(get
             "first_seen_at": item.first_seen_at,
             "last_seen_at": item.last_seen_at,
             "resolved_at": item.resolved_at,
-        }
-        for item in db.scalars(select(Incident).order_by(Incident.last_seen_at.desc()).limit(100))
-    ]
+            "latest_message": latest.message if latest else None,
+            "environment": environment.name if environment else None,
+            "product": product.name if product else None,
+        })
+    return result
+
+
+@app.get("/api/incidents/{incident_id}")
+def incident_detail(incident_id: uuid.UUID, _: Operator = Depends(current_operator),
+                    db: Session = Depends(get_db)):
+    item = db.get(Incident, incident_id)
+    if not item:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Incident not found")
+    environment = db.get(Environment, item.environment_id)
+    product = db.get(Product, environment.product_id) if environment else None
+    observations = list(db.scalars(select(Observation).where(
+        Observation.environment_id == item.environment_id,
+        Observation.target_id == item.target_id,
+        Observation.observed_at >= item.first_seen_at,
+    ).order_by(Observation.observed_at.desc()).limit(50)))
+    return {
+        "id": item.id, "fingerprint": item.fingerprint, "component": item.component,
+        "title": item.title, "severity": item.severity.value, "lifecycle": item.lifecycle.value,
+        "first_seen_at": item.first_seen_at, "last_seen_at": item.last_seen_at,
+        "resolved_at": item.resolved_at, "environment": environment.name if environment else None,
+        "product": product.name if product else None,
+        "observations": [{"id": value.id, "signal": value.signal, "state": value.state.value,
+                          "observed_at": value.observed_at, "message": value.message,
+                          "code": value.code} for value in observations],
+    }
+
+
+@app.get("/api/notification-status")
+def notification_status(_: Operator = Depends(current_operator),
+                        settings: Settings = Depends(get_settings)):
+    return {"email": "active" if settings.notifications_configured else "not_configured"}
 
 
 @app.get("/api/environments/{environment_id}/observations")

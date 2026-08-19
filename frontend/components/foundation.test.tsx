@@ -4,8 +4,9 @@ import { AppShell } from "./AppShell";
 import { displayRelease, serviceSummary } from "./DashboardClient";
 import { LoginForm } from "./LoginForm";
 import { StatusGrid } from "./StatusGrid";
+import { IncidentList, incidentDuration } from "./IncidentsClient";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname:()=>"/dashboard" }));
 afterEach(cleanup);
 
 test("login form exposes secure operator state", () => {
@@ -60,4 +61,16 @@ test("service without healthcheck is healthy when running and unhealthy remains 
 });
 test("monitoring cards are explicitly unknown without data", () => {
   render(<StatusGrid observations={[]} />); expect(screen.getAllByText("Nog geen verse observatie")).toHaveLength(6);
+});
+
+test("incident operations expose active context and resolved history",()=>{
+  const incident={id:"one",fingerprint:"abc",component:"Backups",title:"Backupstatus vereist aandacht",severity:"CRITICAL",lifecycle:"OPEN",first_seen_at:"2026-08-18T10:00:00Z",last_seen_at:"2026-08-18T11:15:00Z",resolved_at:null,latest_message:"Checksum kon niet worden bevestigd",environment:"Production",product:"Plenora"};
+  render(<IncidentList items={[incident]}/>);
+  expect(screen.getByText("Backupstatus vereist aandacht")).toBeInTheDocument();
+  expect(screen.getByText("Checksum kon niet worden bevestigd")).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:/Bekijk incident/})).toBeInTheDocument();
+  expect(incidentDuration(incident.first_seen_at,incident.last_seen_at)).toBe("1u 15m");
+  cleanup();
+  render(<IncidentList items={[{...incident,lifecycle:"RESOLVED",resolved_at:incident.last_seen_at}]} history/>);
+  expect(screen.getByText(/Opgelost/)).toBeInTheDocument();
 });

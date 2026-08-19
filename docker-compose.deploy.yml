@@ -45,6 +45,14 @@ services:
       COCKPIT_MONITORING_COLLECTOR_SECRET: ${COCKPIT_MONITORING_COLLECTOR_SECRET:?required}
       COCKPIT_MONITORING_OBSERVER_ID: ${PLENORA_OBSERVER_ID:-}
       COCKPIT_MONITORING_OBSERVER_SECRET: ${PLENORA_OBSERVER_TOKEN:-}
+      COCKPIT_PUBLIC_URL: ${COCKPIT_PUBLIC_URL:?required}
+      COCKPIT_NOTIFICATION_EMAIL_TO: ${COCKPIT_NOTIFICATION_EMAIL_TO:-}
+      COCKPIT_NOTIFICATION_EMAIL_FROM: ${COCKPIT_NOTIFICATION_EMAIL_FROM:-}
+      COCKPIT_NOTIFICATION_SMTP_HOST: ${COCKPIT_NOTIFICATION_SMTP_HOST:-}
+      COCKPIT_NOTIFICATION_SMTP_PORT: ${COCKPIT_NOTIFICATION_SMTP_PORT:-587}
+      COCKPIT_NOTIFICATION_SMTP_USERNAME: ${COCKPIT_NOTIFICATION_SMTP_USERNAME:-}
+      COCKPIT_NOTIFICATION_SMTP_PASSWORD: ${COCKPIT_NOTIFICATION_SMTP_PASSWORD:-}
+      COCKPIT_NOTIFICATION_SMTP_STARTTLS: ${COCKPIT_NOTIFICATION_SMTP_STARTTLS:-true}
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
     depends_on:
       cockpit-db: {condition: service_healthy}
@@ -83,6 +91,36 @@ services:
       resources:
         limits: {memory: 256M, cpus: "0.75"}
 
+  cockpit-notification-worker:
+    <<: *hardened
+    build:
+      context: ./backend
+      target: production
+    command: [python, -m, app.notification_worker]
+    environment:
+      COCKPIT_ENV: production
+      COCKPIT_DATABASE_URL: ${DATABASE_URL:?required}
+      COCKPIT_SECRET_KEY: ${COCKPIT_SECRET_KEY:?required}
+      COCKPIT_ALLOWED_ORIGINS: ${COCKPIT_ALLOWED_ORIGINS:?required}
+      COCKPIT_ALLOWED_HOSTS: ${COCKPIT_ALLOWED_HOSTS:?required}
+      COCKPIT_COOKIE_SECURE: "true"
+      COCKPIT_INFRASTRUCTURE_MODE: live
+      COCKPIT_PUBLIC_URL: ${COCKPIT_PUBLIC_URL:?required}
+      COCKPIT_NOTIFICATION_EMAIL_TO: ${COCKPIT_NOTIFICATION_EMAIL_TO:-}
+      COCKPIT_NOTIFICATION_EMAIL_FROM: ${COCKPIT_NOTIFICATION_EMAIL_FROM:-}
+      COCKPIT_NOTIFICATION_SMTP_HOST: ${COCKPIT_NOTIFICATION_SMTP_HOST:-}
+      COCKPIT_NOTIFICATION_SMTP_PORT: ${COCKPIT_NOTIFICATION_SMTP_PORT:-587}
+      COCKPIT_NOTIFICATION_SMTP_USERNAME: ${COCKPIT_NOTIFICATION_SMTP_USERNAME:-}
+      COCKPIT_NOTIFICATION_SMTP_PASSWORD: ${COCKPIT_NOTIFICATION_SMTP_PASSWORD:-}
+      COCKPIT_NOTIFICATION_SMTP_STARTTLS: ${COCKPIT_NOTIFICATION_SMTP_STARTTLS:-true}
+    depends_on:
+      cockpit-db: {condition: service_healthy}
+    networks: [cockpit-internal, notification-egress]
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: {memory: 128M, cpus: "0.25"}
+
   cockpit-collector:
     <<: *hardened
     build:
@@ -116,6 +154,7 @@ services:
 networks:
   cockpit-internal: {internal: true}
   monitoring-egress: {}
+  notification-egress: {}
   caddy:
     external: true
     name: "${CADDY_NETWORK:-caddy}"

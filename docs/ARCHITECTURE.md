@@ -1,5 +1,14 @@
 # Architectuur
 
+## Incidentnotificaties (Sprint 5)
+
+De betrouwbare keten is `Monitoring → Observation → Incident lifecycle → NotificationEvent →
+e-maildelivery`. Incidentmutatie en het unieke outboxevent worden in dezelfde PostgreSQL-transactie
+geschreven. Een afzonderlijke, non-root `cockpit-notification-worker` claimt pending events en doet
+SMTP-I/O buiten ingest. De worker stopt na een begrensd aantal pogingen; providerstoringen veranderen
+nooit het ingestresultaat. Ontbrekende configuratie laat events pending en toont e-mail als niet
+geconfigureerd. Cockpit observeert en waarschuwt; het repareert, restart of deployt niets.
+
 Sprint 3 gebruikt twee VPS'en. De allowlisted observer-publisher op Plenora VPS 1 verzamelt lokaal vaste
 host-, backup-, database- en servicesignalen en pusht `snapshot.v1` uitgaand naar authenticated ingest.
 Cockpit VPS 2 bevat geen Plenora-socket, mount of databasecredential. Een tweede collector op VPS 2

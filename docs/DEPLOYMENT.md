@@ -1,5 +1,17 @@
 # Production deployment
 
+## Incident-e-mailnotificaties
+
+Configureer op de Cockpit VPS in root-owned `.env.deploy` uitsluitend runtimewaarden:
+`COCKPIT_NOTIFICATION_EMAIL_TO`, `COCKPIT_NOTIFICATION_EMAIL_FROM`,
+`COCKPIT_NOTIFICATION_SMTP_HOST`, `COCKPIT_NOTIFICATION_SMTP_PORT`, optioneel username/password en
+`COCKPIT_NOTIFICATION_SMTP_STARTTLS`. Zonder complete basisconfiguratie blijven Cockpit en ingest
+normaal werken en toont de UI `E-mail: niet geconfigureerd`. De afzonderlijke notification-worker
+heeft alleen PostgreSQL en SMTP-egress; geen Docker socket, Plenora-netwerk of remediationcapability.
+
+Upgradevolgorde: maak eerst een databasebackup, haal de release op, bouw de images, voer
+`alembic upgrade head` uit en start daarna backend, frontend, collector en notification-worker.
+
 Sprint 3 gebruikt twee losse deployments. VPS 2 bevat Cockpit onder `/opt/plenora-cockpit/app` met
 `docker-compose.deploy.yml`. VPS 1 bevat de Plenora observer-publisher onder
 `/opt/plenora-observer/app` met `docker-compose.observer.yml`. Beide env-bestanden zijn

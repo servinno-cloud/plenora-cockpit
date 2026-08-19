@@ -1,5 +1,9 @@
 # Roadmap
 
+Sprint 5 Incident Operations & Notifications levert read-only incidentoverzicht, incidentdetail,
+resolved historie en een gededupliceerde transactionele e-mailoutbox. Andere kanalen, algemene
+webhooks, preferences en remediation blijven expliciet buiten scope.
+
 Sprint 3 Real VPS Integration is deploymentklaar. Operationeel groen wacht op de latere echte VPS-test;
 deze sprint voert geen deployment, DNS-mutatie of Caddy-reload uit.
 De definitieve productierichting is VPS-1 PUSH naar VPS-2 ingest; er is geen inbound observer-API.

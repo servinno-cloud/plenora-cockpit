@@ -7,9 +7,17 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import HealthState, Incident, IncidentLifecycle, Observation
+from .models import (
+    HealthState,
+    Incident,
+    IncidentLifecycle,
+    NotificationEvent,
+    NotificationEventType,
+    Observation,
+)
 
 FAILURE_STATES = {HealthState.DEGRADED, HealthState.WARNING, HealthState.CRITICAL}
+SEVERITY_RANK = {HealthState.DEGRADED: 1, HealthState.WARNING: 2, HealthState.CRITICAL: 3}
 TITLES = {
     "web_unhealthy": "Web endpoint is niet gezond",
     "backup_unhealthy": "Backupstatus vereist aandacht",
@@ -139,6 +147,24 @@ def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+def _notify(
+    db: Session,
+    incident: Incident,
+    event_type: NotificationEventType,
+    from_severity: HealthState | None = None,
+) -> None:
+    suffix = incident.severity.value if event_type == NotificationEventType.ESCALATED else "once"
+    db.add(
+        NotificationEvent(
+            incident_id=incident.id,
+            event_type=event_type,
+            deduplication_key=f"{incident.id}:{event_type.value}:{suffix}",
+            from_severity=from_severity,
+            to_severity=incident.severity,
+        )
+    )
+
+
 def evaluate(db: Session, observation: Observation, target_key: str) -> None:
     code = incident_code(observation.signal)
     if code is None or observation.state == HealthState.UNKNOWN:
@@ -154,14 +180,15 @@ def evaluate(db: Session, observation: Observation, target_key: str) -> None:
     if observation.state in FAILURE_STATES:
         if active:
             active.last_seen_at = observation.observed_at
-            if observation.state.value != active.severity.value:
+            previous = active.severity
+            if SEVERITY_RANK.get(observation.state, 0) > SEVERITY_RANK.get(previous, 0):
                 active.severity = observation.state
+                _notify(db, active, NotificationEventType.ESCALATED, previous)
             active.occurrence_count += 1
             active.latest_observation_id = observation.id
         elif len(recent) == 2 and all(item.state in FAILURE_STATES for item in recent):
             first = min(_utc(item.observed_at) for item in recent)
-            db.add(
-                Incident(
+            incident = Incident(
                     environment_id=observation.environment_id,
                     target_id=observation.target_id,
                     fingerprint=fp,
@@ -177,11 +204,14 @@ def evaluate(db: Session, observation: Observation, target_key: str) -> None:
                     occurrence_count=2,
                     policy_version="sprint1.v1",
                 )
-            )
+            db.add(incident)
+            db.flush()
+            _notify(db, incident, NotificationEventType.OPENED)
     elif active and len(recent) == 2 and all(item.state == HealthState.HEALTHY for item in recent):
         active.lifecycle = IncidentLifecycle.RESOLVED
         active.resolved_at = observation.observed_at
         active.latest_observation_id = observation.id
+        _notify(db, active, NotificationEventType.RESOLVED)
 
 
 def safe_numeric(value: object) -> Decimal | None:

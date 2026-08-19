@@ -1,13 +1,15 @@
 "use client";
 
 import { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { api } from "../lib/api";
 
-export function AppShell({ children, environmentLabel = "Geen environment", overallState = "UNKNOWN", observedAt = null, release = "development" }: {
-  children: ReactNode; environmentLabel?: string; overallState?: string; observedAt?: string | null; release?: string;
+export function AppShell({ children, environmentLabel = "Geen environment", overallState = "UNKNOWN", observedAt = null, release = "development", currentSection }: {
+  children: ReactNode; environmentLabel?: string; overallState?: string; observedAt?: string | null; release?: string; currentSection?: "overview"|"incidents"|"history";
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const activeSection = currentSection ?? (pathname.startsWith("/incidenten") ? "incidents" : pathname.startsWith("/historie") ? "history" : "overview");
   async function logout() {
     const item = document.cookie.split("; ").find(value => value.startsWith("cockpit_csrf="));
     if (!item) return;
@@ -21,9 +23,9 @@ export function AppShell({ children, environmentLabel = "Geen environment", over
     <aside className="sidebar">
       <a className="brand" href="/dashboard" aria-label="Plenora Operations overzicht"><span className="brand-mark" aria-hidden="true">P</span><span><strong>Plenora</strong><small>Operations</small></span></a>
       <nav aria-label="Hoofdnavigatie">
-        <a className="active" href="/dashboard" aria-current="page"><span className="nav-icon" aria-hidden="true" />Overzicht</a>
-        <span><span className="nav-icon" aria-hidden="true" />Incidenten</span>
-        <span><span className="nav-icon" aria-hidden="true" />Historie</span>
+        <a className={activeSection==="overview"?"active":undefined} href="/dashboard" aria-current={activeSection==="overview"?"page":undefined}><span className="nav-icon" aria-hidden="true" />Overzicht</a>
+        <a className={activeSection==="incidents"?"active":undefined} href="/incidenten" aria-current={activeSection==="incidents"?"page":undefined}><span className="nav-icon" aria-hidden="true" />Incidenten</a>
+        <a className={activeSection==="history"?"active":undefined} href="/historie" aria-current={activeSection==="history"?"page":undefined}><span className="nav-icon" aria-hidden="true" />Historie</a>
       </nav>
       <div className="sidebar-account"><span>Operator</span><button onClick={logout}>Uitloggen</button></div>
     </aside>

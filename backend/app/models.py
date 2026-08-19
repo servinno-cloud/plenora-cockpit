@@ -35,6 +35,18 @@ class IncidentLifecycle(enum.StrEnum):
     RESOLVED = "RESOLVED"
 
 
+class NotificationEventType(enum.StrEnum):
+    OPENED = "OPENED"
+    ESCALATED = "ESCALATED"
+    RESOLVED = "RESOLVED"
+
+
+class NotificationDeliveryState(enum.StrEnum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 class OperatorRole(enum.StrEnum):
     OWNER = "OWNER"
     OPERATOR = "OPERATOR"
@@ -153,6 +165,26 @@ class Incident(Base):
     latest_observation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("observations.id"))
     policy_version: Mapped[str] = mapped_column(String(32), default="sprint1.v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NotificationEvent(Base):
+    __tablename__ = "notification_events"
+    __table_args__ = (UniqueConstraint("deduplication_key", name="uq_notification_dedup"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    event_type: Mapped[NotificationEventType] = mapped_column(Enum(NotificationEventType))
+    deduplication_key: Mapped[str] = mapped_column(String(160))
+    from_severity: Mapped[HealthState | None] = mapped_column(Enum(HealthState))
+    to_severity: Mapped[HealthState] = mapped_column(Enum(HealthState))
+    delivery_state: Mapped[NotificationDeliveryState] = mapped_column(
+        Enum(NotificationDeliveryState), default=NotificationDeliveryState.PENDING, index=True
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    incident: Mapped[Incident] = relationship()
 
 
 class Operator(TimestampMixin, Base):

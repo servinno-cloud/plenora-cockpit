@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     login_rate_window_seconds: int = 900
     infrastructure_mode: str = "live"
     release: str = "development"
+    public_url: str = "https://cockpit.plenora.nl"
+    notification_email_to: str = ""
+    notification_email_from: str = ""
+    notification_smtp_host: str = ""
+    notification_smtp_port: int = 587
+    notification_smtp_username: str = ""
+    notification_smtp_password: str = ""
+    notification_smtp_starttls: bool = True
+    notification_max_attempts: int = 3
 
     @model_validator(mode="after")
     def production_safety(self) -> "Settings":
@@ -35,6 +44,10 @@ class Settings(BaseSettings):
             raise ValueError("Wildcard origins and hosts are not allowed")
         if self.infrastructure_mode not in {"live", "fixture"}:
             raise ValueError("COCKPIT_INFRASTRUCTURE_MODE must be live or fixture")
+        if self.notification_max_attempts < 1 or self.notification_max_attempts > 10:
+            raise ValueError("COCKPIT_NOTIFICATION_MAX_ATTEMPTS must be between 1 and 10")
+        if not self.public_url.startswith("https://cockpit.plenora.nl"):
+            raise ValueError("Notification links must use cockpit.plenora.nl")
         return self
 
     @property
@@ -44,6 +57,11 @@ class Settings(BaseSettings):
     @property
     def hosts(self) -> list[str]:
         return [item.strip() for item in self.allowed_hosts.split(",") if item.strip()]
+
+    @property
+    def notifications_configured(self) -> bool:
+        return all((self.notification_email_to, self.notification_email_from,
+                    self.notification_smtp_host))
 
 
 @lru_cache
