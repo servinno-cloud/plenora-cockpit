@@ -9,6 +9,14 @@ Configureer op de Cockpit VPS in root-owned `.env.deploy` uitsluitend runtimewaa
 normaal werken en toont de UI `E-mail: niet geconfigureerd`. De afzonderlijke notification-worker
 heeft alleen PostgreSQL en SMTP-egress; geen Docker socket, Plenora-netwerk of remediationcapability.
 
+Voor Resend SMTP configureert de root-only helper ontvanger, afzender en verborgen API-key zonder
+credentials in shellhistory of argv. Bestaande configuratie wordt alleen met `--force` vervangen:
+
+```bash
+cd /opt/plenora-cockpit/app
+sudo bash deploy/configure-notifications.sh
+```
+
 Upgradevolgorde: maak eerst een databasebackup, haal de release op, bouw de images, voer
 `alembic upgrade head` uit en start daarna backend, frontend, collector en notification-worker.
 
