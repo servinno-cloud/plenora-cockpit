@@ -48,7 +48,19 @@ def _duration(start: datetime, end: datetime) -> str:
 
 
 def build_message(db: Session, event: NotificationEvent, settings: Settings) -> EmailMessage:
+    if event.event_type == NotificationEventType.TEST:
+        message = EmailMessage()
+        message["To"] = settings.notification_email_to
+        message["From"] = settings.notification_email_from
+        message["Subject"] = "Plenora Cockpit — testnotificatie"
+        message.set_content(
+            "Dit is een test van de Plenora Cockpit e-mailnotificatieketen.\n\n"
+            f"{settings.public_url.rstrip('/')}/incidenten\n"
+        )
+        return message
     incident = event.incident
+    if incident is None:
+        raise ValueError("lifecycle notification is missing its incident")
     environment = db.get(Environment, incident.environment_id)
     product = db.get(Product, environment.product_id) if environment else None
     product_name = product.name if product else "Plenora"

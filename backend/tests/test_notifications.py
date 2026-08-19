@@ -1,9 +1,11 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from test_foundation import login, owner
 from test_monitoring import payload, post, setup_monitoring
 
+from app.cli import queue_test_notification, wait_for_test_notification
 from app.config import get_settings
 from app.models import (
     Incident,
@@ -114,3 +116,40 @@ def test_successful_delivery_and_incident_api_auth(client, db):
     assert listing["product"] == "Plenora" and listing["environment"] == "Production"
     detail = client.get(f"/api/incidents/{incident.id}").json()
     assert detail["observations"] and detail["fingerprint"] == incident.fingerprint
+
+
+def test_synthetic_notification_uses_outbox_worker_without_incident(db, capsys):
+    run_id = uuid.uuid4()
+    first_id = queue_test_notification(run_id)
+    second_id = queue_test_notification(run_id)
+    db.expire_all()
+    assert first_id == second_id
+    assert db.scalar(select(func.count()).select_from(NotificationEvent)) == 1
+    assert db.scalar(select(func.count()).select_from(Incident)) == 0
+    event = db.get(NotificationEvent, first_id)
+    assert event.event_type == NotificationEventType.TEST
+    assert event.incident_id is None
+
+    provider = RecordingProvider()
+    assert deliver_pending(db, configured(), provider) == 1
+    wait_for_test_notification(first_id, timeout_seconds=0)
+    message = provider.messages[0]
+    assert message["Subject"] == "Plenora Cockpit — testnotificatie"
+    assert "Dit is een test" in message.get_content()
+    assert "https://cockpit.plenora.nl/incidenten" in message.get_content()
+    output = capsys.readouterr()
+    assert "operations@example.test" not in output.out + output.err
+    assert "smtp.example.test" not in output.out + output.err
+
+
+def test_cli_dispatches_test_notification_without_sensitive_output(monkeypatch, capsys):
+    from app import cli
+
+    called = []
+    monkeypatch.setattr(cli, "test_notification", lambda: called.append(True))
+    monkeypatch.setattr("sys.argv", ["python -m app.cli", "test-notification"])
+    cli.main()
+    assert called == [True]
+    output = capsys.readouterr()
+    assert "recipient" not in output.out.casefold() + output.err.casefold()
+    assert "smtp" not in output.out.casefold() + output.err.casefold()

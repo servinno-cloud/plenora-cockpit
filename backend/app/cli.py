@@ -2,13 +2,26 @@ import argparse
 import getpass
 import hashlib
 import os
+import time
 import uuid
 
 from sqlalchemy import func, select
 
 from .auth import hash_password
+from .config import get_settings
 from .database import SessionLocal
-from .models import Collector, Environment, Operator, OperatorRole, Product, Target
+from .models import (
+    Collector,
+    Environment,
+    HealthState,
+    NotificationDeliveryState,
+    NotificationEvent,
+    NotificationEventType,
+    Operator,
+    OperatorRole,
+    Product,
+    Target,
+)
 
 
 def create_owner(email: str, password: str) -> None:
@@ -155,6 +168,51 @@ def verify_collector_secret() -> None:
     print("Collector credential valid")
 
 
+def queue_test_notification(run_id: uuid.UUID) -> uuid.UUID:
+    deduplication_key = f"test:{run_id}"
+    with SessionLocal.begin() as db:
+        existing = db.scalar(
+            select(NotificationEvent).where(
+                NotificationEvent.deduplication_key == deduplication_key
+            )
+        )
+        if existing:
+            return existing.id
+        event = NotificationEvent(
+            incident_id=None,
+            event_type=NotificationEventType.TEST,
+            deduplication_key=deduplication_key,
+            from_severity=None,
+            to_severity=HealthState.HEALTHY,
+        )
+        db.add(event)
+        db.flush()
+        return event.id
+
+
+def wait_for_test_notification(event_id: uuid.UUID, timeout_seconds: int = 60) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        with SessionLocal() as db:
+            event = db.get(NotificationEvent, event_id)
+            if event and event.delivery_state == NotificationDeliveryState.SENT:
+                return
+            if event and event.delivery_state == NotificationDeliveryState.FAILED:
+                raise SystemExit("Test notification delivery failed")
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(1)
+    raise SystemExit("Test notification delivery timed out")
+
+
+def test_notification() -> None:
+    if not get_settings().notifications_configured:
+        raise SystemExit("E-mail notifications are not configured")
+    event_id = queue_test_notification(uuid.uuid4())
+    wait_for_test_notification(event_id)
+    print("Test notification sent")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cockpit local bootstrap")
     parser.add_argument(
@@ -164,6 +222,7 @@ def main() -> None:
             "seed-monitoring",
             "rotate-collector-secret",
             "verify-collector-secret",
+            "test-notification",
         ],
     )
     parser.add_argument("--email", default=os.getenv("COCKPIT_BOOTSTRAP_EMAIL", ""))
@@ -174,6 +233,8 @@ def main() -> None:
         rotate_collector_secret()
     elif args.command == "verify-collector-secret":
         verify_collector_secret()
+    elif args.command == "test-notification":
+        test_notification()
     else:
         password = os.getenv("COCKPIT_BOOTSTRAP_PASSWORD") or getpass.getpass("Owner password: ")
         create_owner(args.email, password)

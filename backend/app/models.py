@@ -39,6 +39,7 @@ class NotificationEventType(enum.StrEnum):
     OPENED = "OPENED"
     ESCALATED = "ESCALATED"
     RESOLVED = "RESOLVED"
+    TEST = "TEST"
 
 
 class NotificationDeliveryState(enum.StrEnum):
@@ -171,7 +172,7 @@ class NotificationEvent(Base):
     __tablename__ = "notification_events"
     __table_args__ = (UniqueConstraint("deduplication_key", name="uq_notification_dedup"),)
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
     event_type: Mapped[NotificationEventType] = mapped_column(Enum(NotificationEventType))
     deduplication_key: Mapped[str] = mapped_column(String(160))
     from_severity: Mapped[HealthState | None] = mapped_column(Enum(HealthState))
@@ -184,7 +185,7 @@ class NotificationEvent(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    incident: Mapped[Incident] = relationship()
+    incident: Mapped[Incident | None] = relationship()
 
 
 class Operator(TimestampMixin, Base):
