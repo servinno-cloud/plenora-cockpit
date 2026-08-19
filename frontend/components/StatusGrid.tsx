@@ -49,7 +49,7 @@ export function metricLines(component:string,items:Observation[]):string[]{
     else if(health==="none")lines.push("Draait · geen healthcheck");
     const restarts=numeric(items,"service.restart_count"); if(restarts!==null)lines.push(`Herstarts ${restarts}`);
   }
-  return lines;
+  return lines.slice(0,4);
 }
 
 export function StatusGrid({observations,componentStates={}}:{observations:Observation[];componentStates?:Record<string,string>}){
@@ -64,5 +64,5 @@ export function StatusGrid({observations,componentStates={}}:{observations:Obser
     )
   );
   const message=disabled?["Integratie nog niet gekoppeld"]:metrics.length?metrics:matches.length?["Technische signalen actueel"]:["Nog geen verse observatie"];
-  return <article className={`status-card state-${state.toLowerCase()}`} key={name}><div><span className="status-dot" />{state}</div><h2>{name}</h2><ul className="metric-list">{message.map(line=><li key={line}>{line}</li>)}</ul></article>})}</section>
+  return <article className={`status-card state-${state.toLowerCase()}`} key={name}><div className="card-heading"><h2>{name}</h2><span className="card-state"><i className="status-dot" />{state}</span></div><ul className="metric-list">{message.map((line,index)=><li className={index===0?"primary-metric":""} key={line}>{line}</li>)}</ul></article>})}</section>
 }

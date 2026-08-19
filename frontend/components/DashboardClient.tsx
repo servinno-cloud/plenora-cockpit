@@ -8,12 +8,11 @@ import { Observation, StatusGrid } from "./StatusGrid";
 
 type Environment={id:string;name:string;product_name:string};
 type Snapshot={overall_state:string;component_states:Record<string,string>;service_states:Record<string,string>;data_mode:"live"|"fixture";observed_at:string|null;observations:Observation[]};
-type Incident={id:string;title:string;severity:string;lifecycle:string;last_seen_at:string};
+type Incident={id:string;environment_id:string;component:string;title:string;severity:string;lifecycle:string;first_seen_at:string;last_seen_at:string};
 const stateOrder:Record<string,number>={HEALTHY:0,DEGRADED:1,WARNING:2,UNKNOWN:3,CRITICAL:4};
+const serviceLabels:Record<string,string>={caddy:"Caddy",frontend:"Frontend",backend:"Backend",db:"PostgreSQL","mail-worker":"Mailworker"};
 
-export function displayRelease(value:string){
-  return /^[0-9a-f]{40}$/i.test(value)?value.slice(0,7):value;
-}
+export function displayRelease(value:string){ return /^[0-9a-f]{40}$/i.test(value)?value.slice(0,7):value; }
 
 export function serviceSummary(items:Observation[],apiState?:string){
   const relevant=items.filter(item=>!(item.signal==="service.health"&&item.text_value==="none"));
@@ -22,6 +21,9 @@ export function serviceSummary(items:Observation[],apiState?:string){
   const detail=health==="none"?"Draait · geen healthcheck":health==="healthy"?"Docker healthcheck gezond":health==="unhealthy"?"Docker healthcheck ongezond":health==="starting"?"Healthcheck start op":"Geen verse servicestatus";
   return {state,detail};
 }
+
+function restartCount(items:Observation[]){ return items.find(item=>item.signal==="service.restart_count")?.numeric_value; }
+function since(value:string){ return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"}); }
 
 export function DashboardClient() {
   const router = useRouter();
@@ -36,10 +38,19 @@ export function DashboardClient() {
   const environment=environments.find(item=>item.id===selected);
   const environmentLabel=environment?`${environment.product_name} · ${environment.name}`:"Geen environment";
   const overall=snapshot?.overall_state??"UNKNOWN";
-  return <AppShell environmentLabel={environmentLabel} overallState={overall}><main className="dashboard"><div className="title-row"><div>
-    <span className="eyebrow">Real monitoring</span><h1>Operations overzicht</h1></div><select aria-label="Environment" value={selected} onChange={e=>setSelected(e.target.value)}>{environments.map(e=><option key={e.id} value={e.id}>{e.product_name} · {e.name}</option>)}</select></div>
-    <div className={`health-banner state-${overall.toLowerCase()}`}>Overall: {overall}<small>{snapshot?.observed_at?` Laatste meting ${new Date(snapshot.observed_at).toLocaleString("nl-NL")}`:" Nog geen metingen"}</small></div><StatusGrid observations={snapshot?.observations??[]} componentStates={snapshot?.component_states??{}} />{snapshot?.data_mode==="fixture"?<p>Lokale infrastructuurfixture — geen productiebron</p>:null}
-    <section className="services-panel panel"><h2>Services</h2><div className="services-list">{["caddy","frontend","backend","db","mail-worker"].map(key=>{const items=(snapshot?.observations??[]).filter(item=>item.target===key&&item.signal.startsWith("service."));const summary=serviceSummary(items,snapshot?.service_states?.[key]);return <div className={`service-row state-${summary.state.toLowerCase()}`} key={key}><b>{key==="db"?"PostgreSQL":key==="mail-worker"?"Mailworker":key}</b><span>{summary.state}</span><small>{summary.detail}</small></div>})}</div></section>
-    <section className="lower-grid"><article className="panel"><h2>Actieve incidenten</h2>{incidents.filter(i=>i.lifecycle!=="RESOLVED").length?incidents.filter(i=>i.lifecycle!=="RESOLVED").map(i=><div className="incident" key={i.id}><b>{i.severity}</b> {i.title}<small>{new Date(i.last_seen_at).toLocaleString("nl-NL")}</small></div>):<p>Geen actieve incidenten</p>}</article><article className="panel"><h2>Monitoring</h2><p>Observe-only infrastructuurstatus. Geen acties of productietoegang.</p><small>Cockpit release: {displayRelease(process.env.NEXT_PUBLIC_COCKPIT_RELEASE??"development")}</small></article></section>
-  </main></AppShell>;
+  const release=displayRelease(process.env.NEXT_PUBLIC_COCKPIT_RELEASE??"development");
+  const activeIncidents=incidents.filter(item=>item.environment_id===selected&&item.lifecycle!=="RESOLVED");
+
+  return <AppShell environmentLabel={environmentLabel} overallState={overall} observedAt={snapshot?.observed_at} release={release}>
+    <main className="dashboard">
+      <div className="title-row"><div><p className="page-kicker">Operationele status</p><h1>Overzicht</h1></div><label className="environment-picker"><span>Environment</span><select aria-label="Environment" value={selected} onChange={e=>setSelected(e.target.value)}>{environments.map(e=><option key={e.id} value={e.id}>{e.product_name} · {e.name}</option>)}</select></label></div>
+      <section className={`health-summary state-${overall.toLowerCase()}`} aria-labelledby="health-heading"><div><span className="status-dot" /><span>Overall status</span><strong id="health-heading">{overall}</strong></div><p>{snapshot?.observed_at?`Alle statusinformatie bijgewerkt om ${new Date(snapshot.observed_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}.`:"Er zijn nog geen actuele metingen ontvangen."}</p></section>
+      <StatusGrid observations={snapshot?.observations??[]} componentStates={snapshot?.component_states??{}} />
+      {snapshot?.data_mode==="fixture"?<p className="fixture-note">Lokale infrastructuurfixture — geen productiebron</p>:null}
+
+      <section className="services-panel panel" aria-labelledby="services-heading"><div className="section-heading"><div><p className="section-kicker">Infrastructuur</p><h2 id="services-heading">Services</h2></div><span>Docker runtime</span></div><div className="services-table" role="table" aria-label="Infrastructuurservices"><div className="service-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Status</span><span role="columnheader">Healthcheck</span><span role="columnheader">Herstarts</span></div>{["caddy","frontend","backend","db","mail-worker"].map(key=>{const items=(snapshot?.observations??[]).filter(item=>item.target===key&&item.signal.startsWith("service."));const summary=serviceSummary(items,snapshot?.service_states?.[key]);const restarts=restartCount(items);return <div className={`service-row state-${summary.state.toLowerCase()}`} role="row" key={key}><b role="cell">{serviceLabels[key]}</b><span role="cell" className="service-state"><i className="status-dot" />{summary.state}</span><span role="cell">{summary.detail}</span><span role="cell">{restarts??"—"}</span></div>})}</div></section>
+
+      <section className={`incidents-panel panel ${activeIncidents.length?"has-incidents":"no-incidents"}`} aria-labelledby="incidents-heading"><div className="section-heading"><div><p className="section-kicker">Aandacht</p><h2 id="incidents-heading">Actieve incidenten</h2></div><span>{activeIncidents.length} actief</span></div>{activeIncidents.length?<div className="incident-list">{activeIncidents.map(item=><article className={`incident state-${item.severity.toLowerCase()}`} key={item.id}><span className="severity"><i className="status-dot" />{item.severity}</span><div><b>{item.title}</b><small>{item.component} · sinds {since(item.first_seen_at)}</small></div><span>{item.lifecycle}</span></article>)}</div>:<div className="empty-incidents"><span className="status-dot" /><div><b>Geen actieve incidenten</b><small>Alle gemonitorde onderdelen zijn zonder open incident.</small></div></div>}</section>
+    </main>
+  </AppShell>;
 }
