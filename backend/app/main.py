@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .ai_budget import summary as ai_usage_summary
 from .auth import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -34,10 +35,12 @@ from .health_semantics import aggregate_health
 from .ingest import router as ingest_router
 from .logging import configure_logging
 from .models import (
+    AnalysisRequest,
     AuditEvent,
     Collector,
     Environment,
     Incident,
+    IncidentAnalysis,
     Observation,
     Operator,
     OperatorSession,
@@ -59,6 +62,13 @@ if settings.cors_origins:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-CSRF-Token"],
     )
+
+
+@app.get("/api/ai-usage")
+def ai_usage(_: Operator = Depends(current_operator), db: Session = Depends(get_db)):
+    configured = bool(settings.analysis_provider and settings.analysis_model)
+    return ai_usage_summary(db, settings.ai_monthly_budget_eur,
+                            settings.analysis_enabled, configured)
 
 
 @app.exception_handler(RequestValidationError)
@@ -399,6 +409,12 @@ def incident_detail(incident_id: uuid.UUID, _: Operator = Depends(current_operat
         Observation.target_id == item.target_id,
         Observation.observed_at >= item.first_seen_at,
     ).order_by(Observation.observed_at.desc()).limit(50)))
+    analysis_request = db.scalar(select(AnalysisRequest).where(
+        AnalysisRequest.incident_id == item.id
+    ).order_by(AnalysisRequest.created_at.desc()).limit(1))
+    analysis = db.scalar(select(IncidentAnalysis).where(
+        IncidentAnalysis.request_id == analysis_request.id
+    )) if analysis_request else None
     return {
         "id": item.id, "fingerprint": item.fingerprint, "component": item.component,
         "title": item.title, "severity": item.severity.value, "lifecycle": item.lifecycle.value,
@@ -408,6 +424,21 @@ def incident_detail(incident_id: uuid.UUID, _: Operator = Depends(current_operat
         "observations": [{"id": value.id, "signal": value.signal, "state": value.state.value,
                           "observed_at": value.observed_at, "message": value.message,
                           "code": value.code} for value in observations],
+        "analysis": {
+            "status": "available" if analysis else (
+                "pending" if analysis_request and analysis_request.status.value == "PENDING"
+                else "unavailable"
+            ),
+            "trigger_event": analysis_request.trigger_event.value if analysis_request else None,
+            "created_at": analysis.created_at if analysis else None,
+            "summary": analysis.summary if analysis else None,
+            "probable_cause": analysis.probable_cause if analysis else None,
+            "impact": analysis.impact if analysis else None,
+            "confidence": analysis.confidence.value if analysis else None,
+            "evidence": analysis.evidence if analysis else [],
+            "recommended_checks": analysis.recommended_checks if analysis else [],
+            "limitations": analysis.limitations if analysis else [],
+        },
     }
 
 

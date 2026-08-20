@@ -1,5 +1,18 @@
 # Securitymodel
 
+## Operations Analyst boundary
+
+Het globale AI-budget begrenst uitsluitend modelcalls. Onbekende pricing wordt fail-closed
+geblokkeerd; ontbrekende usage houdt conservatief de volledige reservering als verbruik. Budget- of
+providerfouten degraderen nooit monitoring, ingest, incidenten of notificaties.
+
+De analysis-worker heeft alleen Cockpit PostgreSQL en provider-egress. Hij krijgt geen Docker socket,
+SSH, shell/subprocess, filesystemmount, Plenora-netwerk/database, SMTP-secret, webhook of arbitrary
+HTTP-tool. De vaste providerendpoint ontvangt uitsluitend het gesloten AnalysisContext. API-key en
+modelconfiguratie staan alleen in de workeromgeving; logs, API en UI tonen die niet. Raw responses
+worden gevalideerd en nooit opgeslagen. De centrale system instruction verbiedt acties, remediation,
+persoonsinferentie en verzonnen zekerheid.
+
 Production weigert HTTP-origins, onveilige cookies en fixturemode. VPS 1 exposeert geen observer-API:
 de vaste publisher maakt alleen uitgaand HTTPS POST naar snapshot-ingest. Alleen deze VPS-1 container
 heeft de lokale socket en technische monitorcredential; VPS 2 bezit geen Plenora-credentials. Ingest

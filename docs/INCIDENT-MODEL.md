@@ -1,5 +1,12 @@
 # Incidentmodel
 
+## Analyserequests
+
+Een incident krijgt maximaal één analysis request per `incident-ID + OPENED/ESCALATED + severity`.
+Vervolgpolls en RESOLVED maken geen request. Resultaten blijven via incident-ID beschikbaar nadat
+het incident is opgelost. Attempts, veilige foutcode, trigger, confidence en created/completed
+timestamps ondersteunen latere evaluatie zonder prompts of raw providerresponses op te slaan.
+
 ## Lifecycle-notificationevents
 
 Alleen `OPENED`, een opwaartse `ESCALATED` severitytransitie en `RESOLVED` maken een outboxevent.

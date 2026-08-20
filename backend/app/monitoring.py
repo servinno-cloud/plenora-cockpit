@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import (
+    AnalysisRequest,
+    AnalysisTrigger,
     HealthState,
     Incident,
     IncidentLifecycle,
@@ -163,6 +165,16 @@ def _notify(
             to_severity=incident.severity,
         )
     )
+    if event_type in {NotificationEventType.OPENED, NotificationEventType.ESCALATED}:
+        trigger = AnalysisTrigger(event_type.value)
+        db.add(
+            AnalysisRequest(
+                incident_id=incident.id,
+                trigger_event=trigger,
+                trigger_severity=incident.severity,
+                deduplication_key=f"{incident.id}:{trigger.value}:{incident.severity.value}",
+            )
+        )
 
 
 def evaluate(db: Session, observation: Observation, target_key: str) -> None:

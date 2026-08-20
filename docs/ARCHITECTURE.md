@@ -1,5 +1,16 @@
 # Architectuur
 
+## Operations Analyst (Sprint 6)
+
+De asynchrone keten is `Observation → Incident → AnalysisRequest → Operations Analyst →
+IncidentAnalysis → read-only UI`. Alleen OPENED en opwaartse ESCALATED-transities schrijven in
+dezelfde incidenttransactie een uniek request. De aparte worker bouwt een gesloten, privacyarme
+context, roept een provider zonder tools aan en bewaart uitsluitend schema-gevalideerde output.
+Providerfailure blokkeert ingest, incidenten en notificaties nooit. De capability is strikt
+`READ → ANALYZE → ADVISE`, nooit `ACT → MODIFY → REMEDIATE`. Elke providercall passeert eerst
+de gedeelde transactionele AI-maandbudgetreservering. Provider-reported usage wordt daarna zonder
+context, prompt of response gereconcilieerd en is generiek op `agent_key`.
+
 ## Incidentnotificaties (Sprint 5)
 
 De betrouwbare keten is `Monitoring → Observation → Incident lifecycle → NotificationEvent →

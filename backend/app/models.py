@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Enum,
@@ -46,6 +47,24 @@ class NotificationDeliveryState(enum.StrEnum):
     PENDING = "PENDING"
     SENT = "SENT"
     FAILED = "FAILED"
+
+
+class AnalysisTrigger(enum.StrEnum):
+    OPENED = "OPENED"
+    ESCALATED = "ESCALATED"
+
+
+class AnalysisRequestStatus(enum.StrEnum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    DISABLED = "DISABLED"
+
+
+class AnalysisConfidence(enum.StrEnum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
 
 
 class OperatorRole(enum.StrEnum):
@@ -186,6 +205,80 @@ class NotificationEvent(Base):
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     incident: Mapped[Incident | None] = relationship()
+
+
+class AnalysisRequest(Base):
+    __tablename__ = "analysis_requests"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    trigger_event: Mapped[AnalysisTrigger] = mapped_column(Enum(AnalysisTrigger))
+    trigger_severity: Mapped[HealthState] = mapped_column(Enum(HealthState))
+    deduplication_key: Mapped[str] = mapped_column(String(160), unique=True)
+    status: Mapped[AnalysisRequestStatus] = mapped_column(
+        Enum(AnalysisRequestStatus), default=AnalysisRequestStatus.PENDING, index=True
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    safe_error_code: Mapped[str | None] = mapped_column(String(80))
+    incident: Mapped[Incident] = relationship()
+
+
+class IncidentAnalysis(Base):
+    __tablename__ = "incident_analyses"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("analysis_requests.id"), unique=True, index=True
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    summary: Mapped[str] = mapped_column(String(800))
+    probable_cause: Mapped[str] = mapped_column(String(800))
+    impact: Mapped[str] = mapped_column(String(800))
+    confidence: Mapped[AnalysisConfidence] = mapped_column(Enum(AnalysisConfidence))
+    evidence: Mapped[list[str]] = mapped_column(JSON)
+    recommended_checks: Mapped[list[str]] = mapped_column(JSON)
+    limitations: Mapped[list[str]] = mapped_column(JSON)
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(100))
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    request: Mapped[AnalysisRequest] = relationship()
+
+
+class AIUsage(Base):
+    __tablename__ = "ai_usage"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    agent_key: Mapped[str] = mapped_column(String(80), index=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(100))
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("analysis_requests.id"), unique=True, index=True
+    )
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cached_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost_eur: Mapped[Decimal | None] = mapped_column(Numeric(20, 10))
+    reserved_cost_eur: Mapped[Decimal] = mapped_column(Numeric(20, 10))
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    pricing_version: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AIMonthlyBudget(Base):
+    __tablename__ = "ai_monthly_budgets"
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    spent_eur: Mapped[Decimal] = mapped_column(Numeric(20, 10), default=Decimal("0"))
+    reserved_eur: Mapped[Decimal] = mapped_column(Numeric(20, 10), default=Decimal("0"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Operator(TimestampMixin, Base):

@@ -1,5 +1,9 @@
 # Roadmap
 
+Sprint 6 voegt één Operations Analyst toe voor begrensde, gestructureerde incidentanalyse. Er is geen
+chat, toolframework, browsing, memory, RAG, tweede agent of remediation. Iedere volgende capability
+blijft achter een afzonderlijke security- en approvalbeslissing.
+
 Sprint 5 Incident Operations & Notifications levert read-only incidentoverzicht, incidentdetail,
 resolved historie en een gededupliceerde transactionele e-mailoutbox. Andere kanalen, algemene
 webhooks, preferences en remediation blijven expliciet buiten scope.

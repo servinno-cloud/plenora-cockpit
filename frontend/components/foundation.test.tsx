@@ -1,10 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppShell } from "./AppShell";
-import { displayRelease, serviceSummary } from "./DashboardClient";
+import { AIUsagePanel, displayRelease, serviceSummary } from "./DashboardClient";
 import { LoginForm } from "./LoginForm";
 import { StatusGrid } from "./StatusGrid";
-import { IncidentList, incidentDuration } from "./IncidentsClient";
+import { AnalysisPanel, IncidentList, incidentDuration } from "./IncidentsClient";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname:()=>"/dashboard" }));
 afterEach(cleanup);
@@ -73,4 +73,22 @@ test("incident operations expose active context and resolved history",()=>{
   cleanup();
   render(<IncidentList items={[{...incident,lifecycle:"RESOLVED",resolved_at:incident.last_seen_at}]} history/>);
   expect(screen.getByText(/Opgelost/)).toBeInTheDocument();
+});
+
+test("operations analyst renders pending available and unavailable states",()=>{
+  const analysis={status:"available" as const,trigger_event:"OPENED",created_at:"2026-08-19T12:00:00Z",summary:"Technische samenvatting",probable_cause:"Onvoldoende bewijs voor een zekere oorzaak.",impact:"Mogelijk tragere responses.",confidence:"MEDIUM",evidence:["Latency is verhoogd."],recommended_checks:["Controleer de latencytrend."],limitations:["Geen logs beschikbaar."]};
+  const {rerender}=render(<AnalysisPanel analysis={analysis}/>);
+  expect(screen.getByText("Technische samenvatting")).toBeInTheDocument();
+  expect(screen.getByText("Confidence MEDIUM")).toBeInTheDocument();
+  expect(screen.getByText(/AI-analyse op basis/)).toBeInTheDocument();
+  rerender(<AnalysisPanel analysis={{...analysis,status:"pending"}}/>);
+  expect(screen.getByText("Analyse bezig")).toBeInTheDocument();
+  rerender(<AnalysisPanel analysis={{...analysis,status:"unavailable"}}/>);
+  expect(screen.getByText("Analyse niet beschikbaar")).toBeInTheDocument();
+});
+
+test("AI usage renders the shared cap and exhausted state",()=>{
+  render(<AIUsagePanel usage={{status:"exhausted",spent_eur:"100.00",budget_eur:"100.00",percentage:100,agents:[{agent_key:"operations_analyst",calls:42,spent_eur:"100.00"}]}}/>);
+  expect(screen.getByText("AI-budget bereikt")).toBeInTheDocument();
+  expect(screen.getByText("€ 100.00 · 42 analyses")).toBeInTheDocument();
 });

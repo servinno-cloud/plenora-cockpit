@@ -1,5 +1,51 @@
 # Production deployment
 
+## Operations Analyst
+
+Configureer de analyst uitsluitend met de root-only helper. Deze leest de OpenAI API-key verborgen,
+schrijft `.env.deploy` atomisch als root-owned mode `0600`, valideert Compose zonder configuratie of
+secret naar de terminal te schrijven en laat de analyst standaard uitgeschakeld:
+
+```bash
+cd /opt/plenora-cockpit/app
+sudo bash deploy/configure-analysis.sh
+```
+
+Voer de eerste productioncontrole disabled-first uit; in deze fase doet de worker geen modelcall:
+
+```bash
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml config --quiet
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml build \
+  cockpit-backend cockpit-frontend cockpit-analysis-worker
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml run --rm \
+  cockpit-backend alembic upgrade head
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml up -d \
+  cockpit-backend cockpit-frontend cockpit-analysis-worker
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml ps cockpit-analysis-worker
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml exec -T \
+  cockpit-backend alembic current
+```
+
+Controleer daarna authenticated incidentdetail, `/incidenten`, `/historie`, ingest en notificaties.
+Schakel pas na deze controles expliciet in en recreate uitsluitend de analysis-worker zodat de nieuwe
+procesenvironment wordt geladen:
+
+```bash
+sudo bash deploy/configure-analysis.sh --enable
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml up -d \
+  --force-recreate cockpit-analysis-worker
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml ps cockpit-analysis-worker
+```
+
+Bestaande analysisconfiguratie wordt alleen met `--force` vervangen; dat zet enabled opnieuw op
+`false`. Alleen `cockpit-analysis-worker` ontvangt de providerkey. Monitoring, incidenten en
+notificaties blijven ook bij disabled provider of providerfailure functioneren.
+
+Het gedeelde AI-budget is standaard `COCKPIT_AI_MONTHLY_BUDGET_EUR=100`. De versioned catalogus
+rekent de officiële USD-tokenprijzen reproduceerbaar om met de vaste conservatieve accountingrate
+`COCKPIT_AI_USD_TO_EUR_RATE=1.00`; runtime gebruikt geen live wisselkoers. Voer migratie
+`0008_ai_usage_budget` uit voordat backend of analysis-worker met Sprint 6B start.
+
 ## Incident-e-mailnotificaties
 
 Configureer op de Cockpit VPS in root-owned `.env.deploy` uitsluitend runtimewaarden:
