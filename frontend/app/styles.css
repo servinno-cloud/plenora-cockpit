@@ -13,6 +13,8 @@
   --critical: #bd3737;
   --unknown: #7b898d;
   --focus: #2d7fbc;
+  --content-max: 1760px;
+  --content-gutter: clamp(20px, 2.5vw, 48px);
 }
 
 * { box-sizing: border-box; }
@@ -50,7 +52,8 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
 .sidebar-account button { min-height: 38px; padding: 0; border: 0; background: transparent; color: #d2dedd; text-align: left; cursor: pointer; }
 
 .workspace { min-width: 0; }
-.context-bar { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 10px clamp(20px, 3vw, 38px); border-bottom: 1px solid var(--line); background: #fff; }
+.context-bar { min-height: 68px; padding: 0 var(--content-gutter); border-bottom: 1px solid var(--line); background: #fff; }
+.context-bar-inner { width: min(var(--content-max), 100%); min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-inline: auto; padding-block: 10px; }
 .context-environment > span, .context-meta dt { display: block; margin-bottom: 2px; color: var(--subtle); font-size: 10px; font-weight: 650; }
 .context-environment b { font-size: 14px; }
 .context-meta { display: flex; align-items: center; gap: clamp(20px, 3vw, 42px); margin: 0; }
@@ -58,7 +61,7 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
 .context-meta dd { margin: 0; color: #39484c; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .overall { color: var(--muted); }
 
-.dashboard { width: min(1360px, 100%); padding: 22px clamp(20px, 3vw, 38px) 36px; }
+.dashboard { width: min(calc(var(--content-max) + 2 * var(--content-gutter)), 100%); margin-inline: auto; padding: 22px var(--content-gutter) 36px; }
 .title-row { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
 .page-kicker, .section-kicker { margin: 0 0 3px; color: var(--muted); font-size: 11px; font-weight: 650; }
 .environment-picker { width: min(270px, 42vw); gap: 3px; margin: 0; color: var(--muted); font-size: 11px; }
@@ -77,17 +80,17 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
 .state-warning .status-dot, .state-degraded .status-dot, .state-text-warning .status-dot, .state-text-degraded .status-dot { background: var(--warning); }
 .state-critical .status-dot, .state-text-critical .status-dot { background: var(--critical); }
 
-.status-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .status-card, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .status-card { min-width: 0; min-height: 142px; padding: 13px 13px 12px; border-top: 2px solid var(--line-strong); }
 .status-card.state-healthy { border-top-color: #71a990; }
 .status-card.state-warning, .status-card.state-degraded { border-top-color: var(--warning); background: #fffcf8; }
 .status-card.state-critical { border-color: #e4b7b7; border-top-color: var(--critical); background: #fffafa; box-shadow: 0 3px 12px rgba(139, 31, 31, .07); }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid #edf0f0; }
-.card-heading h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.card-state { display: flex; align-items: center; color: var(--muted); font-size: 9px; font-weight: 750; white-space: nowrap; }
+.card-heading h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: clamp(15px, .25vw + 14px, 17px); }
+.card-state { display: flex; align-items: center; color: var(--muted); font-size: 10px; font-weight: 750; white-space: nowrap; }
 .card-state .status-dot { width: 7px; height: 7px; margin-right: 4px; }
-.metric-list { list-style: none; margin: 10px 0 0; padding: 0; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.metric-list { list-style: none; margin: 10px 0 0; padding: 0; color: var(--muted); font-size: clamp(11px, .18vw + 10px, 12.5px); line-height: 1.4; }
 .metric-list li { overflow-wrap: anywhere; }
 .metric-list li + li { margin-top: 4px; }
 .metric-list .primary-metric { color: #344247; font-weight: 650; }
@@ -97,8 +100,8 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .section-heading > span { color: var(--subtle); font-size: 11px; }
 .services-panel { margin-top: 12px; }
-.services-table { font-size: 12px; }
-.service-table-head, .service-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(105px, .7fr) minmax(190px, 1.5fr) 64px; align-items: center; gap: 14px; padding: 7px 9px; }
+.services-table { width: 100%; font-size: 12px; }
+.service-table-head, .service-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(120px, .8fr) minmax(220px, 2fr) minmax(68px, .45fr); align-items: center; gap: clamp(14px, 2vw, 34px); padding: 8px 10px; }
 .service-table-head { color: var(--subtle); font-size: 10px; font-weight: 650; }
 .service-row { min-height: 36px; border-top: 1px solid #edf0f0; color: var(--muted); }
 .service-row b { color: var(--ink); font-size: 12px; }
@@ -165,8 +168,11 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
 .ai-usage.state-warning { border-left:3px solid var(--warning); }
 .ai-usage.state-critical,.ai-usage.state-exhausted { border-left:3px solid var(--critical); }
 
+@media (min-width: 1680px) {
+  .status-grid { grid-template-columns: repeat(6, minmax(220px, 1fr)); }
+}
+
 @media (max-width: 1180px) {
-  .status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .status-card { min-height: 128px; }
 }
 
@@ -191,7 +197,8 @@ input, select { min-height: 42px; padding: 9px 11px; border: 1px solid #b9c4c7; 
   .sidebar nav .active .nav-icon { display: none; }
   .sidebar-account { margin: 0 0 0 4px; padding: 0; border: 0; }
   .sidebar-account button { min-width: 64px; min-height: 40px; padding: 0 8px; }
-  .context-bar { min-height: 62px; padding: 9px 16px; }
+  .context-bar { min-height: 62px; padding-inline: 16px; }
+  .context-bar-inner { min-height: 62px; padding-block: 9px; }
   .context-meta { gap: 0; }
   .context-meta div:not(:first-child) { display: none; }
   .context-meta div { min-width: auto; }

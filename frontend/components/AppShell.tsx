@@ -31,12 +31,14 @@ export function AppShell({ children, environmentLabel = "Geen environment", over
     </aside>
     <div className="workspace">
       <header className="context-bar">
-        <div className="context-environment"><span>Omgeving</span><b>{environmentLabel}</b></div>
-        <dl className="context-meta">
-          <div><dt>Status</dt><dd className={`overall state-text-${overallState.toLowerCase()}`}><span className="status-dot" />Overall {overallState}</dd></div>
-          <div><dt>Laatste update</dt><dd>{update}</dd></div>
-          <div><dt>Release</dt><dd>{release}</dd></div>
-        </dl>
+        <div className="context-bar-inner">
+          <div className="context-environment"><span>Omgeving</span><b>{environmentLabel}</b></div>
+          <dl className="context-meta">
+            <div><dt>Status</dt><dd className={`overall state-text-${overallState.toLowerCase()}`}><span className="status-dot" />Overall {overallState}</dd></div>
+            <div><dt>Laatste update</dt><dd>{update}</dd></div>
+            <div><dt>Release</dt><dd>{release}</dd></div>
+          </dl>
+        </div>
       </header>
       {children}
     </div>
