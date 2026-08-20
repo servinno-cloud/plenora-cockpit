@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 from test_foundation import login, owner
 from test_monitoring import payload, post, setup_monitoring
@@ -11,7 +12,9 @@ from app.analysis import (
     AnalysisContext,
     AnalysisResult,
     OpenAIAnalysisProvider,
+    ProviderDiagnosticError,
     ProviderResult,
+    _parse_openai_response,
     build_context,
     process_pending,
 )
@@ -51,6 +54,27 @@ class FakeProvider:
             return ProviderResult(result=self.result,
                 usage=Usage(1000, 100, 100, 50, 1100))
         return self.result
+
+
+def official_response(output_text=None, *, status="completed", usage=True):
+    text = output_text if output_text is not None else FakeProvider().result.model_dump_json()
+    return {
+        "status": status,
+        "incomplete_details": None,
+        "output": [{
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": text, "annotations": []}],
+        }],
+        "usage": ({
+            "input_tokens": 1000,
+            "input_tokens_details": {"cached_tokens": 100, "cache_write_tokens": 50},
+            "output_tokens": 100,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 1100,
+        } if usage else None),
+    }
 
 
 def enabled(**updates):
@@ -135,7 +159,7 @@ def test_malformed_and_timeout_are_bounded_and_do_not_store(client, db):
     assert db.scalar(select(func.count()).select_from(IncidentAnalysis)) == 0
     request = db.scalar(select(AnalysisRequest))
     assert request.status == AnalysisRequestStatus.FAILED and request.attempt_count == 1
-    assert request.safe_error_code == "provider_usage_invalid"
+    assert request.safe_error_code == "provider_response_schema_invalid"
     db.delete(db.scalar(select(AIUsage)))
     request.status = AnalysisRequestStatus.PENDING
     db.commit()
@@ -188,14 +212,10 @@ def test_openai_request_is_stateless_bounded_and_has_no_tools(monkeypatch):
 
         def read(self, limit):
             assert limit == 262_144
-            result = FakeProvider().result.model_dump_json()
-            details = captured.get("usage_details", {
-                "cached_tokens": 100, "cache_write_tokens": 50
-            })
-            return json.dumps({"output": [{"content": [
-                {"type": "output_text", "text": result}
-            ]}], "usage": {"input_tokens": 1000, "output_tokens": 100,
-                "total_tokens": 1100, "input_tokens_details": details}}).encode()
+            result = official_response()
+            if "usage_details" in captured:
+                result["usage"]["input_tokens_details"] = captured["usage_details"]
+            return json.dumps(result).encode()
 
     def fake_urlopen(request, timeout):
         captured["payload"] = json.loads(request.data)
@@ -219,7 +239,34 @@ def test_openai_request_is_stateless_bounded_and_has_no_tools(monkeypatch):
     assert "tools" not in request and "tool_choice" not in request
     assert provider_result.usage.cache_write_tokens == 50
     captured["usage_details"] = {"cached_tokens": 100}
-    assert OpenAIAnalysisProvider(settings).analyze(context).usage is None
+    with pytest.raises(ProviderDiagnosticError) as error:
+        OpenAIAnalysisProvider(settings).analyze(context)
+    assert error.value.code == "provider_usage_invalid"
+
+
+@pytest.mark.parametrize(("response", "code"), [
+    ({"status": "completed", "output": [], "usage": official_response()["usage"]},
+     "provider_response_missing_output"),
+    ({**official_response(), "output": [{"type": "message", "content": [
+        {"type": "refusal", "refusal": "not available"}
+    ]}]}, "provider_response_refusal"),
+    (official_response(status="incomplete"), "provider_response_incomplete"),
+    (official_response("not-json"), "provider_response_json_invalid"),
+    (official_response('{"summary":"incomplete"}'), "provider_response_schema_invalid"),
+    ({**official_response(), "output": [{"type": "message", "content": []}]},
+     "provider_response_missing_output_text"),
+])
+def test_official_response_failures_have_closed_codes(response, code):
+    with pytest.raises(ProviderDiagnosticError) as error:
+        _parse_openai_response(response)
+    assert error.value.code == code
+    assert error.value.billable is True
+
+
+def test_official_structured_response_is_accepted():
+    parsed = _parse_openai_response(official_response())
+    assert parsed.result.confidence == "MEDIUM"
+    assert parsed.usage.cache_write_tokens == 50
 
 
 def test_missing_cache_write_usage_consumes_reservation_fail_safe(client, db):
@@ -234,7 +281,41 @@ def test_missing_cache_write_usage_consumes_reservation_fail_safe(client, db):
     usage = db.scalar(select(AIUsage))
     request = db.scalar(select(AnalysisRequest))
     assert usage.status == "UNKNOWN" and usage.estimated_cost_eur is None
-    assert request.safe_error_code == "provider_usage_invalid"
+    assert request.safe_error_code == "provider_usage_missing"
+
+
+def test_billable_invalid_result_reconciles_usage_once_without_raw_logging(
+    client, db, caplog
+):
+    open_incident(client, db)
+    raw_marker = "RAW_PROVIDER_SECRET_MARKER"
+
+    class InvalidOutputProvider(FakeProvider):
+        def analyze(self, context):
+            self.contexts.append(context)
+            return _parse_openai_response(official_response(raw_marker))
+
+    provider = InvalidOutputProvider()
+    with caplog.at_level("WARNING", logger="cockpit.analysis"):
+        assert process_pending(db, enabled(), provider) == 0
+    request = db.scalar(select(AnalysisRequest))
+    usage = db.scalar(select(AIUsage))
+    assert request.status == AnalysisRequestStatus.FAILED
+    assert request.safe_error_code == "provider_response_json_invalid"
+    assert usage.status == "INVALID_RESULT"
+    assert usage.total_tokens == 1100
+    assert usage.estimated_cost_eur == Decimal("0.0030450000")
+    assert process_pending(db, enabled(), provider) == 0
+    assert len(provider.contexts) == 1
+    assert db.scalar(select(func.count()).select_from(AIUsage)) == 1
+    rendered = " ".join(record.getMessage() for record in caplog.records)
+    assert "analysis_attempt_failed" in rendered
+    assert raw_marker not in rendered
+    assert all(getattr(record, "error_code", None) in {
+        None, "provider_response_json_invalid"
+    } for record in caplog.records)
+    usage_summary = summary(db, enabled().ai_monthly_budget_eur, True, True)
+    assert usage_summary["agents"][0]["calls"] == 1
 
 
 def test_budget_exhaustion_blocks_provider_without_affecting_incident(client, db):

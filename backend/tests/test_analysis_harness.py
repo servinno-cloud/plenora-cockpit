@@ -67,7 +67,7 @@ def test_synthetic_malformed_output_fails_without_retry(db):
     db.expire_all()
     request = db.get(AnalysisRequest, request_id)
     assert request.status == AnalysisRequestStatus.FAILED
-    assert request.safe_error_code == "provider_usage_invalid"
+    assert request.safe_error_code == "provider_response_schema_invalid"
     assert len(provider.contexts) == 1
     assert process_pending(db, enabled(), provider) == 0
     assert len(provider.contexts) == 1

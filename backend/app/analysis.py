@@ -103,6 +103,103 @@ class ProviderResult(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class ProviderDiagnosticError(Exception):
+    def __init__(self, code: str, *, usage: Usage | None = None, billable: bool = False):
+        super().__init__(code)
+        self.code = code
+        self.usage = usage
+        self.billable = billable
+
+
+def _parse_usage(raw_usage: object) -> tuple[Usage | None, str | None]:
+    if raw_usage is None:
+        return None, "provider_usage_missing"
+    if not isinstance(raw_usage, dict):
+        return None, "provider_usage_invalid"
+    details = raw_usage.get("input_tokens_details")
+    if not isinstance(details, dict):
+        return None, "provider_usage_invalid"
+    try:
+        values = {
+            "input_tokens": int(raw_usage["input_tokens"]),
+            "output_tokens": int(raw_usage["output_tokens"]),
+            "cached_input_tokens": int(details.get("cached_tokens", 0)),
+            "cache_write_tokens": int(details["cache_write_tokens"]),
+            "total_tokens": int(raw_usage["total_tokens"]),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None, "provider_usage_invalid"
+    if any(value < 0 for value in values.values()) or (
+        values["cached_input_tokens"] + values["cache_write_tokens"]
+        > values["input_tokens"]
+    ):
+        return None, "provider_usage_invalid"
+    return Usage(**values), None
+
+
+def _parse_openai_response(response: object) -> ProviderResult:
+    if not isinstance(response, dict):
+        raise ProviderDiagnosticError("provider_response_json_invalid", billable=True)
+    usage, usage_error = _parse_usage(response.get("usage"))
+    status = response.get("status")
+    if status == "failed":
+        raise ProviderDiagnosticError(
+            "provider_response_failed", usage=usage, billable=True
+        )
+    if status == "incomplete":
+        raise ProviderDiagnosticError(
+            "provider_response_incomplete", usage=usage, billable=True
+        )
+    if status != "completed":
+        raise ProviderDiagnosticError(
+            "provider_response_incomplete", usage=usage, billable=True
+        )
+    output = response.get("output")
+    if not isinstance(output, list) or not output:
+        raise ProviderDiagnosticError(
+            "provider_response_missing_output", usage=usage, billable=True
+        )
+    messages = [item for item in output if isinstance(item, dict) and item.get("type") == "message"]
+    if not messages:
+        raise ProviderDiagnosticError(
+            "provider_response_missing_output", usage=usage, billable=True
+        )
+    output_texts: list[str] = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "refusal":
+                raise ProviderDiagnosticError(
+                    "provider_response_refusal", usage=usage, billable=True
+                )
+            if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                output_texts.append(part["text"])
+    if not output_texts:
+        raise ProviderDiagnosticError(
+            "provider_response_missing_output_text", usage=usage, billable=True
+        )
+    output_text = "".join(output_texts)
+    try:
+        structured = json.loads(output_text)
+    except (json.JSONDecodeError, TypeError):
+        raise ProviderDiagnosticError(
+            "provider_response_json_invalid", usage=usage, billable=True
+        ) from None
+    try:
+        result = AnalysisResult.model_validate(structured)
+    except ValidationError:
+        raise ProviderDiagnosticError(
+            "provider_response_schema_invalid", usage=usage, billable=True
+        ) from None
+    if usage_error:
+        raise ProviderDiagnosticError(usage_error, billable=True)
+    return ProviderResult(result=result, usage=usage)
+
+
 class OpenAIAnalysisProvider:
     name = "openai"
 
@@ -128,40 +225,25 @@ class OpenAIAnalysisProvider:
                      "Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(
-            request, timeout=self.settings.analysis_timeout_seconds
-        ) as response:
-            result = json.loads(response.read(262_144))
-        output_text = result.get("output_text")
-        if not isinstance(output_text, str):
-            for item in result.get("output", []):
-                for content in item.get("content", []):
-                    if content.get("type") == "output_text":
-                        output_text = content.get("text")
-                        break
-        raw_usage = result.get("usage")
-        usage = None
-        if raw_usage and all(key in raw_usage for key in (
-            "input_tokens", "output_tokens", "total_tokens"
-        )):
-            details = raw_usage.get("input_tokens_details") or {}
-            try:
-                values = {
-                    "input_tokens": int(raw_usage["input_tokens"]),
-                    "output_tokens": int(raw_usage["output_tokens"]),
-                    "cached_input_tokens": int(details.get("cached_tokens", 0)),
-                    "cache_write_tokens": int(details["cache_write_tokens"]),
-                    "total_tokens": int(raw_usage["total_tokens"]),
-                }
-                if any(value < 0 for value in values.values()) or (
-                    values["cached_input_tokens"] + values["cache_write_tokens"]
-                    > values["input_tokens"]
-                ):
-                    raise ValueError("invalid provider usage")
-                usage = Usage(**values)
-            except (KeyError, TypeError, ValueError):
-                usage = None
-        return ProviderResult(result=AnalysisResult.model_validate_json(output_text), usage=usage)
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self.settings.analysis_timeout_seconds
+            ) as response:
+                raw_response = response.read(262_144)
+        except urllib.error.HTTPError as error:
+            code = "provider_auth_error" if error.code in {401, 403} else "provider_http_error"
+            raise ProviderDiagnosticError(code) from None
+        except TimeoutError:
+            raise ProviderDiagnosticError("provider_timeout", billable=True) from None
+        except urllib.error.URLError:
+            raise ProviderDiagnosticError("provider_http_error") from None
+        try:
+            decoded = json.loads(raw_response)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise ProviderDiagnosticError(
+                "provider_response_json_invalid", billable=True
+            ) from None
+        return _parse_openai_response(decoded)
 
 
 def _value(item: Observation):
@@ -311,33 +393,57 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
         if not request.is_test:
             request.attempt_count += 1
             request.last_attempt_at = datetime.now(UTC)
-        call_completed = False
         try:
             raw_result = analyzer.analyze(context)
-            call_completed = True
-            provider_result = ProviderResult.model_validate(raw_result)
+            try:
+                provider_result = ProviderResult.model_validate(raw_result)
+            except ValidationError:
+                raise ProviderDiagnosticError(
+                    "provider_response_schema_invalid", billable=True
+                ) from None
             if provider_result.usage is None:
-                raise ValueError("provider usage missing")
+                raise ProviderDiagnosticError("provider_usage_missing", billable=True)
             result = provider_result.result
-        except (ValidationError, ValueError, TypeError, TimeoutError, urllib.error.URLError):
-            if call_completed:
-                reconcile(db, reservation, None, settings.ai_usd_to_eur_rate)
-                request.status = AnalysisRequestStatus.FAILED
-                request.safe_error_code = "provider_usage_invalid"
+        except ProviderDiagnosticError as error:
+            if error.billable:
+                reconcile(
+                    db, reservation, error.usage, settings.ai_usd_to_eur_rate,
+                    status="INVALID_RESULT",
+                )
             else:
                 release(db, reservation)
-                request.safe_error_code = "provider_response_invalid"
-                if request.is_test or request.attempt_count >= settings.analysis_max_attempts:
-                    request.status = AnalysisRequestStatus.FAILED
-            logger.warning("analysis_attempt_failed", extra={"request_id": str(request.id),
-                                                              "attempt": request.attempt_count})
+            request.safe_error_code = error.code
+            if (
+                error.billable
+                or error.code == "provider_auth_error"
+                or request.is_test
+                or request.attempt_count >= settings.analysis_max_attempts
+            ):
+                request.status = AnalysisRequestStatus.FAILED
+            logger.warning("analysis_attempt_failed", extra={
+                "request_id": str(request.id),
+                "attempt": request.attempt_count,
+                "error_code": error.code,
+            })
+        except TimeoutError:
+            reconcile(db, reservation, None, settings.ai_usd_to_eur_rate)
+            request.status = AnalysisRequestStatus.FAILED
+            request.safe_error_code = "provider_timeout"
+            logger.warning("analysis_attempt_failed", extra={
+                "request_id": str(request.id),
+                "attempt": request.attempt_count,
+                "error_code": "provider_timeout",
+            })
         except Exception:
             release(db, reservation)
             request.safe_error_code = "provider_failed"
             if request.is_test or request.attempt_count >= settings.analysis_max_attempts:
                 request.status = AnalysisRequestStatus.FAILED
-            logger.warning("analysis_attempt_failed", extra={"request_id": str(request.id),
-                                                              "attempt": request.attempt_count})
+            logger.warning("analysis_attempt_failed", extra={
+                "request_id": str(request.id),
+                "attempt": request.attempt_count,
+                "error_code": "provider_failed",
+            })
         else:
             reconcile(db, reservation, provider_result.usage, settings.ai_usd_to_eur_rate)
             db.add(IncidentAnalysis(request_id=request.id, incident_id=request.incident_id,

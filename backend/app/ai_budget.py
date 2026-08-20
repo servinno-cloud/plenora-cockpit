@@ -89,7 +89,8 @@ def reserve(db: Session, request_id, incident_id, provider: str, model: str,
     return usage
 
 
-def reconcile(db: Session, record: AIUsage, usage: Usage | None, rate: Decimal) -> None:
+def reconcile(db: Session, record: AIUsage, usage: Usage | None, rate: Decimal,
+              status: str = "COMPLETED") -> None:
     monthly = db.scalar(select(AIMonthlyBudget).where(
         AIMonthlyBudget.month == month_key(record.occurred_at)).with_for_update())
     if record.status != "RESERVED":
@@ -107,7 +108,7 @@ def reconcile(db: Session, record: AIUsage, usage: Usage | None, rate: Decimal) 
     record.cache_write_tokens = usage.cache_write_tokens
     record.total_tokens = usage.total_tokens
     record.estimated_cost_eur = actual
-    record.status = "COMPLETED" if actual is not None else "UNKNOWN"
+    record.status = status if actual is not None else "UNKNOWN"
     monthly.spent_eur += actual if actual is not None else record.reserved_cost_eur
     db.commit()
 
@@ -129,7 +130,7 @@ def summary(db: Session, budget: Decimal, enabled: bool, configured: bool):
     end = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=UTC)
     spent = db.scalar(select(func.coalesce(func.sum(AIUsage.estimated_cost_eur), 0)).where(
         AIUsage.occurred_at >= start, AIUsage.occurred_at < end,
-        AIUsage.status == "COMPLETED")) or Decimal("0")
+        AIUsage.status.in_(("COMPLETED", "INVALID_RESULT")))) or Decimal("0")
     # UNKNOWN calls conservatively consume their reservation.
     unknown = db.scalar(select(func.coalesce(func.sum(AIUsage.reserved_cost_eur), 0)).where(
         AIUsage.occurred_at >= start, AIUsage.occurred_at < end,
@@ -138,7 +139,8 @@ def summary(db: Session, budget: Decimal, enabled: bool, configured: bool):
     rows = db.execute(select(AIUsage.agent_key, func.count(AIUsage.id),
         func.coalesce(func.sum(AIUsage.estimated_cost_eur), 0)).where(
         AIUsage.occurred_at >= start, AIUsage.occurred_at < end,
-        AIUsage.status == "COMPLETED").group_by(AIUsage.agent_key)).all()
+        AIUsage.status.in_(("COMPLETED", "INVALID_RESULT"))
+    ).group_by(AIUsage.agent_key)).all()
     percent = (spent / budget * 100) if budget else Decimal("100")
     level, threshold = budget_level(percent)
     state = "disabled" if not enabled else "provider_not_configured" if not configured else level
