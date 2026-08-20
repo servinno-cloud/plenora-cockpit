@@ -104,11 +104,31 @@ class ProviderResult(BaseModel):
 
 
 class ProviderDiagnosticError(Exception):
-    def __init__(self, code: str, *, usage: Usage | None = None, billable: bool = False):
+    def __init__(
+        self,
+        code: str,
+        *,
+        usage: Usage | None = None,
+        billable: bool = False,
+        http_status: int | None = None,
+    ):
         super().__init__(code)
         self.code = code
         self.usage = usage
         self.billable = billable
+        self.http_status = http_status
+
+
+def _http_error_code(status: int) -> str:
+    return {
+        400: "provider_http_400",
+        401: "provider_auth_401",
+        403: "provider_auth_403",
+        404: "provider_http_404",
+        409: "provider_http_409",
+        422: "provider_http_422",
+        429: "provider_rate_limit_429",
+    }.get(status, "provider_http_5xx" if 500 <= status <= 599 else "provider_http_other")
 
 
 def _parse_usage(raw_usage: object) -> tuple[Usage | None, str | None]:
@@ -231,12 +251,14 @@ class OpenAIAnalysisProvider:
             ) as response:
                 raw_response = response.read(262_144)
         except urllib.error.HTTPError as error:
-            code = "provider_auth_error" if error.code in {401, 403} else "provider_http_error"
-            raise ProviderDiagnosticError(code) from None
+            status = int(error.code)
+            raise ProviderDiagnosticError(
+                _http_error_code(status), http_status=status
+            ) from None
         except TimeoutError:
             raise ProviderDiagnosticError("provider_timeout", billable=True) from None
         except urllib.error.URLError:
-            raise ProviderDiagnosticError("provider_http_error") from None
+            raise ProviderDiagnosticError("provider_http_other") from None
         try:
             decoded = json.loads(raw_response)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -413,9 +435,12 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
             else:
                 release(db, reservation)
             request.safe_error_code = error.code
+            retryable_http_error = error.code in {
+                "provider_rate_limit_429", "provider_http_5xx"
+            }
             if (
                 error.billable
-                or error.code == "provider_auth_error"
+                or not retryable_http_error
                 or request.is_test
                 or request.attempt_count >= settings.analysis_max_attempts
             ):
@@ -424,6 +449,7 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
                 "request_id": str(request.id),
                 "attempt": request.attempt_count,
                 "error_code": error.code,
+                "http_status": error.http_status,
             })
         except TimeoutError:
             reconcile(db, reservation, None, settings.ai_usd_to_eur_rate)

@@ -1,4 +1,7 @@
+import io
 import json
+import urllib.error
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -16,6 +19,7 @@ from app.analysis import (
     ProviderResult,
     _parse_openai_response,
     build_context,
+    build_test_context,
     process_pending,
 )
 from app.config import get_settings
@@ -25,6 +29,7 @@ from app.models import (
     AnalysisRequestStatus,
     Incident,
     IncidentAnalysis,
+    NotificationEvent,
     Observation,
 )
 
@@ -267,6 +272,143 @@ def test_official_structured_response_is_accepted():
     parsed = _parse_openai_response(official_response())
     assert parsed.result.confidence == "MEDIUM"
     assert parsed.usage.cache_write_tokens == 50
+
+
+@pytest.mark.parametrize(("status", "code"), [
+    (400, "provider_http_400"),
+    (401, "provider_auth_401"),
+    (403, "provider_auth_403"),
+    (404, "provider_http_404"),
+    (429, "provider_rate_limit_429"),
+    (500, "provider_http_5xx"),
+])
+def test_openai_http_status_has_closed_diagnostic_without_body(
+    monkeypatch, status, code
+):
+    raw_marker = "RAW_HTTP_BODY_MUST_NOT_ESCAPE"
+
+    def fail_request(_request, timeout):
+        assert timeout == 20
+        raise urllib.error.HTTPError(
+            "https://api.openai.com/v1/responses",
+            status,
+            raw_marker,
+            {},
+            io.BytesIO(raw_marker.encode()),
+        )
+
+    monkeypatch.setattr("app.analysis.urllib.request.urlopen", fail_request)
+    with pytest.raises(ProviderDiagnosticError) as error:
+        OpenAIAnalysisProvider(enabled(analysis_timeout_seconds=20)).analyze(
+            build_test_context(uuid.uuid4())
+        )
+    assert error.value.code == code
+    assert error.value.http_status == status
+    assert error.value.billable is False
+    assert raw_marker not in str(error.value)
+
+
+def test_http_response_body_never_reaches_log_or_database(client, db, monkeypatch, caplog):
+    open_incident(client, db)
+    raw_marker = "PRIVATE_PROVIDER_ERROR_BODY"
+
+    def fail_request(_request, timeout):
+        assert timeout == 20
+        raise urllib.error.HTTPError(
+            "https://api.openai.com/v1/responses",
+            400,
+            raw_marker,
+            {},
+            io.BytesIO(raw_marker.encode()),
+        )
+
+    monkeypatch.setattr("app.analysis.urllib.request.urlopen", fail_request)
+    settings = enabled(
+        analysis_model="gpt-5.6-terra", analysis_timeout_seconds=20
+    )
+    provider = OpenAIAnalysisProvider(settings)
+    with caplog.at_level("WARNING", logger="cockpit.analysis"):
+        assert process_pending(db, settings, provider) == 0
+    request = db.scalar(select(AnalysisRequest))
+    assert request.safe_error_code == "provider_http_400"
+    assert request.status == AnalysisRequestStatus.FAILED
+    assert raw_marker not in " ".join(record.getMessage() for record in caplog.records)
+    assert raw_marker not in request.safe_error_code
+    assert db.scalar(select(func.count()).select_from(AIUsage)) == 0
+
+
+@pytest.mark.parametrize(("code", "status"), [
+    ("provider_auth_401", 401),
+    ("provider_auth_403", 403),
+])
+def test_auth_http_failures_are_terminal_without_usage_or_state_changes(
+    client, db, caplog, code, status
+):
+    open_incident(client, db)
+    before = {
+        "incidents": db.scalar(select(func.count()).select_from(Incident)),
+        "observations": db.scalar(select(func.count()).select_from(Observation)),
+        "notifications": db.scalar(select(func.count()).select_from(NotificationEvent)),
+    }
+
+    class AuthFailureProvider(FakeProvider):
+        def analyze(self, context):
+            self.contexts.append(context)
+            raise ProviderDiagnosticError(code, http_status=status)
+
+    provider = AuthFailureProvider()
+    with caplog.at_level("WARNING", logger="cockpit.analysis"):
+        assert process_pending(db, enabled(), provider) == 0
+    request = db.scalar(select(AnalysisRequest))
+    assert request.status == AnalysisRequestStatus.FAILED
+    assert request.safe_error_code == code
+    assert process_pending(db, enabled(), provider) == 0
+    assert len(provider.contexts) == 1
+    assert db.scalar(select(func.count()).select_from(AIUsage)) == 0
+    assert caplog.records[-1].http_status == status
+    assert before == {
+        "incidents": db.scalar(select(func.count()).select_from(Incident)),
+        "observations": db.scalar(select(func.count()).select_from(Observation)),
+        "notifications": db.scalar(select(func.count()).select_from(NotificationEvent)),
+    }
+
+
+@pytest.mark.parametrize(("code", "status"), [
+    ("provider_rate_limit_429", 429),
+    ("provider_http_5xx", 500),
+])
+def test_retryable_http_failures_use_existing_bounded_policy(
+    client, db, code, status
+):
+    open_incident(client, db)
+    before = (
+        db.scalar(select(func.count()).select_from(Incident)),
+        db.scalar(select(func.count()).select_from(Observation)),
+        db.scalar(select(func.count()).select_from(NotificationEvent)),
+    )
+
+    class RetryableFailureProvider(FakeProvider):
+        def analyze(self, context):
+            self.contexts.append(context)
+            raise ProviderDiagnosticError(code, http_status=status)
+
+    provider = RetryableFailureProvider()
+    settings = enabled(analysis_max_attempts=2)
+    assert process_pending(db, settings, provider) == 0
+    request = db.scalar(select(AnalysisRequest))
+    assert request.status == AnalysisRequestStatus.PENDING
+    assert request.attempt_count == 1
+    assert db.scalar(select(func.count()).select_from(AIUsage)) == 0
+    assert process_pending(db, settings, provider) == 0
+    assert request.status == AnalysisRequestStatus.FAILED
+    assert request.attempt_count == 2
+    assert process_pending(db, settings, provider) == 0
+    assert len(provider.contexts) == 2
+    assert before == (
+        db.scalar(select(func.count()).select_from(Incident)),
+        db.scalar(select(func.count()).select_from(Observation)),
+        db.scalar(select(func.count()).select_from(NotificationEvent)),
+    )
 
 
 def test_missing_cache_write_usage_consumes_reservation_fail_safe(client, db):
