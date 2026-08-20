@@ -1,19 +1,26 @@
 import argparse
 import getpass
 import hashlib
+import json
 import os
 import time
 import uuid
 
 from sqlalchemy import func, select
 
+from .analysis import build_test_context
 from .auth import hash_password
 from .config import get_settings
 from .database import SessionLocal
 from .models import (
+    AIUsage,
+    AnalysisRequest,
+    AnalysisRequestStatus,
+    AnalysisTrigger,
     Collector,
     Environment,
     HealthState,
+    IncidentAnalysis,
     NotificationDeliveryState,
     NotificationEvent,
     NotificationEventType,
@@ -213,6 +220,111 @@ def test_notification() -> None:
     print("Test notification sent")
 
 
+def queue_test_analysis(run_id: uuid.UUID) -> uuid.UUID:
+    deduplication_key = f"test-analysis:{run_id}"
+    with SessionLocal.begin() as db:
+        existing = db.scalar(select(AnalysisRequest).where(
+            AnalysisRequest.deduplication_key == deduplication_key
+        ))
+        if existing:
+            return existing.id
+        context = build_test_context(run_id)
+        request = AnalysisRequest(
+            incident_id=None,
+            trigger_event=AnalysisTrigger.TEST,
+            trigger_severity=HealthState.WARNING,
+            deduplication_key=deduplication_key,
+            is_test=True,
+            test_context=context.model_dump(mode="json"),
+        )
+        db.add(request)
+        db.flush()
+        return request.id
+
+
+def wait_for_test_analysis(request_id: uuid.UUID, timeout_seconds: int = 120) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        with SessionLocal() as db:
+            request = db.get(AnalysisRequest, request_id)
+            if request and request.status == AnalysisRequestStatus.COMPLETED:
+                return
+            if request and request.status in {
+                AnalysisRequestStatus.FAILED,
+                AnalysisRequestStatus.DISABLED,
+            }:
+                raise SystemExit(
+                    f"Test analysis failed: {request.safe_error_code or 'analysis_failed'}"
+                )
+        time.sleep(1)
+    raise SystemExit("Test analysis failed: timed_out")
+
+
+def test_analysis() -> None:
+    try:
+        settings = get_settings()
+        if not settings.analysis_enabled:
+            raise SystemExit("Test analysis failed: provider_disabled")
+        request_id = queue_test_analysis(uuid.uuid4())
+        wait_for_test_analysis(request_id)
+    except SystemExit:
+        raise
+    except Exception:
+        raise SystemExit("Test analysis failed: internal_error") from None
+    print("Test analysis completed")
+
+
+def show_last_test_analysis() -> None:
+    with SessionLocal() as db:
+        request = db.scalar(select(AnalysisRequest).where(
+            AnalysisRequest.is_test.is_(True),
+            AnalysisRequest.status == AnalysisRequestStatus.COMPLETED,
+        ).order_by(AnalysisRequest.completed_at.desc()).limit(1))
+        if request is None:
+            raise SystemExit("Test analysis failed: result_not_found")
+        result = db.scalar(select(IncidentAnalysis).where(
+            IncidentAnalysis.request_id == request.id
+        ))
+        usage = db.scalar(select(AIUsage).where(AIUsage.request_id == request.id))
+        if result is None or usage is None:
+            raise SystemExit("Test analysis failed: result_incomplete")
+        output = {
+            "summary": result.summary,
+            "probable_cause": result.probable_cause,
+            "evidence": result.evidence,
+            "impact": result.impact,
+            "recommended_checks": result.recommended_checks,
+            "confidence": result.confidence.value,
+            "limitations": result.limitations,
+            "usage": {
+                "input_tokens": usage.input_tokens,
+                "cached_input_tokens": usage.cached_input_tokens,
+                "cache_write_tokens": usage.cache_write_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.total_tokens,
+                "estimated_cost_eur": str(usage.estimated_cost_eur),
+            },
+        }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
+
+
+def cleanup_test_analyses() -> None:
+    with SessionLocal.begin() as db:
+        requests = list(db.scalars(select(AnalysisRequest).where(
+            AnalysisRequest.is_test.is_(True),
+            AnalysisRequest.status != AnalysisRequestStatus.PENDING,
+        )))
+        request_ids = [request.id for request in requests]
+        if request_ids:
+            for result in db.scalars(select(IncidentAnalysis).where(
+                IncidentAnalysis.request_id.in_(request_ids)
+            )):
+                db.delete(result)
+            for request in requests:
+                request.test_context = None
+    print("Test analysis records cleaned")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cockpit local bootstrap")
     parser.add_argument(
@@ -223,6 +335,9 @@ def main() -> None:
             "rotate-collector-secret",
             "verify-collector-secret",
             "test-notification",
+            "test-analysis",
+            "show-last-test-analysis",
+            "cleanup-test-analyses",
         ],
     )
     parser.add_argument("--email", default=os.getenv("COCKPIT_BOOTSTRAP_EMAIL", ""))
@@ -235,6 +350,12 @@ def main() -> None:
         verify_collector_secret()
     elif args.command == "test-notification":
         test_notification()
+    elif args.command == "test-analysis":
+        test_analysis()
+    elif args.command == "show-last-test-analysis":
+        show_last_test_analysis()
+    elif args.command == "cleanup-test-analyses":
+        cleanup_test_analyses()
     else:
         password = os.getenv("COCKPIT_BOOTSTRAP_PASSWORD") or getpass.getpass("Owner password: ")
         create_owner(args.email, password)

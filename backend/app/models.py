@@ -52,6 +52,7 @@ class NotificationDeliveryState(enum.StrEnum):
 class AnalysisTrigger(enum.StrEnum):
     OPENED = "OPENED"
     ESCALATED = "ESCALATED"
+    TEST = "TEST"
 
 
 class AnalysisRequestStatus(enum.StrEnum):
@@ -210,10 +211,12 @@ class NotificationEvent(Base):
 class AnalysisRequest(Base):
     __tablename__ = "analysis_requests"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
     trigger_event: Mapped[AnalysisTrigger] = mapped_column(Enum(AnalysisTrigger))
     trigger_severity: Mapped[HealthState] = mapped_column(Enum(HealthState))
     deduplication_key: Mapped[str] = mapped_column(String(160), unique=True)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    test_context: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[AnalysisRequestStatus] = mapped_column(
         Enum(AnalysisRequestStatus), default=AnalysisRequestStatus.PENDING, index=True
     )
@@ -222,7 +225,7 @@ class AnalysisRequest(Base):
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     safe_error_code: Mapped[str | None] = mapped_column(String(80))
-    incident: Mapped[Incident] = relationship()
+    incident: Mapped[Incident | None] = relationship()
 
 
 class IncidentAnalysis(Base):
@@ -231,7 +234,7 @@ class IncidentAnalysis(Base):
     request_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("analysis_requests.id"), unique=True, index=True
     )
-    incident_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("incidents.id"), index=True)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
     summary: Mapped[str] = mapped_column(String(800))
     probable_cause: Mapped[str] = mapped_column(String(800))
     impact: Mapped[str] = mapped_column(String(800))

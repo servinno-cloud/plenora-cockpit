@@ -46,6 +46,31 @@ rekent de officiële USD-tokenprijzen reproduceerbaar om met de vaste conservati
 `COCKPIT_AI_USD_TO_EUR_RATE=1.00`; runtime gebruikt geen live wisselkoers. Voer migratie
 `0008_ai_usage_budget` uit voordat backend of analysis-worker met Sprint 6B start.
 
+### Veilige end-to-end analyst-test
+
+Na migratie `0010_safe_analysis_test_harness` kan een OWNER-beheerder één synthetische analyse via
+de normale budget-, worker-, Responses API-, validatie- en usageketen uitvoeren. De request bevat
+uitsluitend vaste technische TEST-feiten, heeft geen incidentkoppeling en maakt geen observations of
+notificationevents. De backend-CLI ontvangt geen providerkey; alleen de bestaande analysis-worker
+voert de modelcall uit.
+
+```bash
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml exec -T \
+  cockpit-backend python -m app.cli test-analysis
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml exec -T \
+  cockpit-backend python -m app.cli show-last-test-analysis
+```
+
+De eerste opdracht meldt uitsluitend voltooiing of een veilige foutcode. De tweede toont alleen het
+gevalideerde structured resultaat en de usage/kostensamenvatting, nooit prompt, raw providerresponse
+of secret. Optionele cleanup verwijdert alleen het structured testresultaat en de opgeslagen
+testcontext; de requestidentiteit en werkelijk geboekte usage/kosten blijven behouden:
+
+```bash
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml exec -T \
+  cockpit-backend python -m app.cli cleanup-test-analyses
+```
+
 ## Incident-e-mailnotificaties
 
 Configureer op de Cockpit VPS in root-owned `.env.deploy` uitsluitend runtimewaarden:

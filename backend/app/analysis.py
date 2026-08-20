@@ -2,12 +2,13 @@ import json
 import logging
 import urllib.error
 import urllib.request
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from .ai_budget import Usage, reconcile, release, reserve
@@ -208,6 +209,48 @@ def build_context(db: Session, incident: Incident, settings: Settings) -> Analys
     )
 
 
+def context_for_request(
+    db: Session, request: AnalysisRequest, settings: Settings
+) -> AnalysisContext:
+    if request.is_test:
+        return AnalysisContext.model_validate(request.test_context)
+    if request.incident is None:
+        raise ValueError("incident missing")
+    return build_context(db, request.incident, settings)
+
+
+def build_test_context(run_id: uuid.UUID, now: datetime | None = None) -> AnalysisContext:
+    observed_at = now or datetime.now(UTC)
+    common = {"observed_at": observed_at, "source": "cockpit_test_harness"}
+    return AnalysisContext(
+        incident_id=f"TEST:{run_id}",
+        component="Backups",
+        severity="WARNING",
+        lifecycle="RESOLVED",
+        first_seen=observed_at,
+        last_seen=observed_at,
+        fingerprint=f"test-analysis:{run_id}",
+        message_code="test_backup_freshness_warning",
+        product="Plenora TEST",
+        environment="synthetic-test",
+        observations=[
+            ContextObservation(signal="backup.status", state="HEALTHY", value="success",
+                               message_code="test_backup_success", **common),
+            ContextObservation(signal="backup.success_age_seconds", state="WARNING", value=172800,
+                               message_code="test_backup_stale", **common),
+            ContextObservation(signal="backup.checksum_verified", state="HEALTHY", value=True,
+                               message_code="test_checksum_verified", **common),
+            ContextObservation(signal="host.uptime_seconds", state="HEALTHY", value=864000,
+                               message_code="test_host_healthy", **common),
+            ContextObservation(signal="db.reachable", state="HEALTHY", value=True,
+                               message_code="test_database_healthy", **common),
+            ContextObservation(signal="https.reachable", state="HEALTHY", value=True,
+                               message_code="test_web_healthy", **common),
+        ],
+        history=[],
+    )
+
+
 def process_pending(db: Session, settings: Settings, provider: AnalysisProvider | None = None,
                     limit: int = 5) -> int:
     if not settings.analysis_enabled:
@@ -226,11 +269,29 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
     analyzer = provider or OpenAIAnalysisProvider(settings)
     requests = list(db.scalars(select(AnalysisRequest)
         .options(selectinload(AnalysisRequest.incident))
-        .where(AnalysisRequest.status == AnalysisRequestStatus.PENDING)
+        .where(
+            AnalysisRequest.status == AnalysisRequestStatus.PENDING,
+            or_(AnalysisRequest.is_test.is_(False), AnalysisRequest.safe_error_code.is_(None)),
+        )
         .order_by(AnalysisRequest.created_at).limit(limit).with_for_update(skip_locked=True)))
     completed = 0
     for request in requests:
-        context = build_context(db, request.incident, settings)
+        try:
+            context = context_for_request(db, request, settings)
+        except (ValidationError, ValueError, TypeError):
+            request.status = AnalysisRequestStatus.FAILED
+            request.safe_error_code = (
+                "test_context_invalid" if request.is_test else "context_invalid"
+            )
+            db.commit()
+            continue
+        if request.is_test:
+            # Claim before reservation commits and releases the row lock. Other workers exclude
+            # this marker, so a synthetic request can cause at most one provider call.
+            request.attempt_count += 1
+            request.last_attempt_at = datetime.now(UTC)
+            request.safe_error_code = "test_processing"
+            db.commit()
         input_bound = len(SYSTEM_INSTRUCTION.encode()) + len(context.model_dump_json().encode())
         reservation = reserve(db, request.id, request.incident_id, analyzer.name, analyzer.model,
             input_bound, settings.analysis_max_output_tokens, settings.ai_monthly_budget_eur,
@@ -247,8 +308,9 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
             request.safe_error_code = "usage_already_recorded"
             db.commit()
             continue
-        request.attempt_count += 1
-        request.last_attempt_at = datetime.now(UTC)
+        if not request.is_test:
+            request.attempt_count += 1
+            request.last_attempt_at = datetime.now(UTC)
         call_completed = False
         try:
             raw_result = analyzer.analyze(context)
@@ -265,14 +327,14 @@ def process_pending(db: Session, settings: Settings, provider: AnalysisProvider 
             else:
                 release(db, reservation)
                 request.safe_error_code = "provider_response_invalid"
-                if request.attempt_count >= settings.analysis_max_attempts:
+                if request.is_test or request.attempt_count >= settings.analysis_max_attempts:
                     request.status = AnalysisRequestStatus.FAILED
             logger.warning("analysis_attempt_failed", extra={"request_id": str(request.id),
                                                               "attempt": request.attempt_count})
         except Exception:
             release(db, reservation)
             request.safe_error_code = "provider_failed"
-            if request.attempt_count >= settings.analysis_max_attempts:
+            if request.is_test or request.attempt_count >= settings.analysis_max_attempts:
                 request.status = AnalysisRequestStatus.FAILED
             logger.warning("analysis_attempt_failed", extra={"request_id": str(request.id),
                                                               "attempt": request.attempt_count})
