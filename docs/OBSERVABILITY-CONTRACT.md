@@ -204,6 +204,7 @@ minuten CRITICAL als configureerbare defaults.
 - `disk.root.used_percent`;
 - `disk.root.inodes_used_percent`;
 - `disk.backup.used_percent` indien apart filesystem;
+- `disk.backup.inodes_used_percent` indien apart filesystem;
 - `backup.directory_bytes`.
 
 Disk >80% WARNING en >90% CRITICAL. Inodes gebruiken dezelfde defaults. Absolute bytes blijven voor

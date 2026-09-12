@@ -141,6 +141,37 @@ def test_services_policies_and_unknown_rejected(monkeypatch):
     assert probes.services_probe("x")[0]["state"] == "UNKNOWN"
 
 
+def test_host_boundary_uses_canonical_disk_percentage_signals(monkeypatch):
+    monkeypatch.setattr(
+        probes,
+        "_contract",
+        lambda *args: {
+            "timestamp": "2026-09-12T10:00:00Z",
+            "uptime_seconds": 3600,
+            "root_total_bytes": 10_000,
+            "root_used_bytes": 8_100,
+            "root_free_bytes": 1_900,
+            "root_inode_used_percent": 82,
+            "backup_total_bytes": 20_000,
+            "backup_used_bytes": 18_200,
+            "backup_free_bytes": 1_800,
+            "backup_inode_used_percent": 91,
+            "load_1m": 0.1,
+            "load_5m": 0.2,
+            "load_15m": 0.3,
+        },
+    )
+
+    values = {item["signal"]: item["value"] for item in probes.host_boundary_probe("x")}
+
+    assert values["disk.root.used_percent"] == 81.0
+    assert values["disk.root.inodes_used_percent"] == 82
+    assert values["disk.backup.used_percent"] == 91.0
+    assert values["disk.backup.inodes_used_percent"] == 91
+    assert "disk.root.inode_used_percent" not in values
+    assert "disk.backup.inode_used_percent" not in values
+
+
 def test_external_profile_requires_no_vps_credentials_or_fixture_paths(monkeypatch):
     variables = {
         "COCKPIT_COLLECTOR_ID": "collector", "COCKPIT_ENVIRONMENT_ID": "environment",

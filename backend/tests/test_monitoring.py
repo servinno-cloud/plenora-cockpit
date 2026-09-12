@@ -203,6 +203,67 @@ def test_incident_antiflap_escalation_and_recovery(client, db):
     assert resolved.first_seen_at == first_seen
 
 
+def test_disk_thresholds_open_escalate_deduplicate_and_recover(client, db):
+    environment, collector = setup_monitoring(db)
+    start = datetime.now(UTC) - timedelta(seconds=30)
+
+    assert post(client, environment, payload(
+        environment, collector, 1, 80, signal="disk.root.used_percent",
+        observed_at=start, target="host", source="host_metrics",
+    )).status_code == 202
+    assert db.scalar(select(func.count()).select_from(Incident)) == 0
+
+    for sequence in (2, 3):
+        assert post(client, environment, payload(
+            environment, collector, sequence, 81, signal="disk.root.used_percent",
+            observed_at=start + timedelta(seconds=sequence), target="host", source="host_metrics",
+        )).status_code == 202
+    incident = db.scalar(select(Incident))
+    assert incident and incident.severity.value == "WARNING"
+    incident_id, incident_fingerprint = incident.id, incident.fingerprint
+
+    assert post(client, environment, payload(
+        environment, collector, 4, 91, signal="disk.root.used_percent",
+        observed_at=start + timedelta(seconds=4), target="host", source="host_metrics",
+    )).status_code == 202
+    db.expire_all()
+    incident = db.get(Incident, incident_id)
+    assert incident.severity.value == "CRITICAL"
+    assert incident.fingerprint == incident_fingerprint
+    assert db.scalar(select(func.count()).select_from(Incident)) == 1
+
+    for sequence in (5, 6):
+        assert post(client, environment, payload(
+            environment, collector, sequence, 80, signal="disk.root.used_percent",
+            observed_at=start + timedelta(seconds=sequence), target="host", source="host_metrics",
+        )).status_code == 202
+    db.expire_all()
+    assert db.get(Incident, incident_id).lifecycle == IncidentLifecycle.RESOLVED
+
+
+def test_backup_inode_threshold_uses_canonical_signal(client, db):
+    environment, collector = setup_monitoring(db)
+    for sequence in (1, 2):
+        assert post(client, environment, payload(
+            environment, collector, sequence, 91,
+            signal="disk.backup.inodes_used_percent", target="host", source="host_metrics",
+        )).status_code == 202
+    incident = db.scalar(select(Incident))
+    assert incident and incident.code == "host_capacity"
+    assert incident.severity.value == "CRITICAL"
+
+
+def test_buffered_legacy_inode_signal_remains_classified(client, db):
+    environment, collector = setup_monitoring(db)
+    for sequence in (1, 2):
+        assert post(client, environment, payload(
+            environment, collector, sequence, 81,
+            signal="disk.root.inode_used_percent", target="host", source="host_metrics",
+        )).status_code == 202
+    incident = db.scalar(select(Incident))
+    assert incident and incident.severity.value == "WARNING"
+
+
 def test_unknown_bootstrap_does_not_create_incidents(client, db):
     environment, collector = setup_monitoring(db)
     for sequence in range(1, 6):
@@ -392,10 +453,12 @@ def test_exact_production_observer_snapshot_is_accepted(client, db):
         item("host", "host.uptime_seconds", "host_metrics", 86400, unit="s"),
         item("host", "disk.root.used_bytes", "host_metrics", 4000, unit="bytes"),
         item("host", "disk.root.free_bytes", "host_metrics", 6000, unit="bytes"),
-        item("host", "disk.root.inode_used_percent", "host_metrics", 10.0, unit="percent"),
+        item("host", "disk.root.used_percent", "host_metrics", 40.0, unit="percent"),
+        item("host", "disk.root.inodes_used_percent", "host_metrics", 10.0, unit="percent"),
         item("host", "disk.backup.used_bytes", "host_metrics", 5000, unit="bytes"),
         item("host", "disk.backup.free_bytes", "host_metrics", 15000, unit="bytes"),
-        item("host", "disk.backup.inode_used_percent", "host_metrics", 5.0, unit="percent"),
+        item("host", "disk.backup.used_percent", "host_metrics", 25.0, unit="percent"),
+        item("host", "disk.backup.inodes_used_percent", "host_metrics", 5.0, unit="percent"),
         item("host", "host.load_1m", "host_metrics", 0.1),
         item("host", "host.load_5m", "host_metrics", 0.2),
         item("host", "host.load_15m", "host_metrics", 0.3),

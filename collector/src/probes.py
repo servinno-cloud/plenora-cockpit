@@ -330,15 +330,25 @@ def host_boundary_probe(boundary_url: str, target="host"):
         "uptime_seconds": ("host.uptime_seconds", "s"),
         "root_used_bytes": ("disk.root.used_bytes", "bytes"),
         "root_free_bytes": ("disk.root.free_bytes", "bytes"),
-        "root_inode_used_percent": ("disk.root.inode_used_percent", "percent"),
         "backup_used_bytes": ("disk.backup.used_bytes", "bytes"),
         "backup_free_bytes": ("disk.backup.free_bytes", "bytes"),
-        "backup_inode_used_percent": ("disk.backup.inode_used_percent", "percent"),
         "load_1m": ("host.load_1m", None),
         "load_5m": ("host.load_5m", None),
         "load_15m": ("host.load_15m", None),
     }
-    return [
+    result = [
         _obs(target, signal, "host_metrics", data[key], unit=unit)
         for key, (signal, unit) in mapping.items()
     ]
+    result.extend([
+        _obs(target, "disk.root.used_percent", "host_metrics",
+             round(data["root_used_bytes"] / data["root_total_bytes"] * 100, 2), unit="percent"),
+        _obs(target, "disk.root.inodes_used_percent", "host_metrics",
+             data["root_inode_used_percent"], unit="percent"),
+        _obs(target, "disk.backup.used_percent", "host_metrics",
+             round(data["backup_used_bytes"] / data["backup_total_bytes"] * 100, 2),
+             unit="percent"),
+        _obs(target, "disk.backup.inodes_used_percent", "host_metrics",
+             data["backup_inode_used_percent"], unit="percent"),
+    ])
+    return result

@@ -105,3 +105,31 @@ def test_running_service_without_docker_healthcheck_is_not_a_failure(monkeypatch
     states = {item["signal"]: item["state"] for item in observations}
     assert states["service.running"] == "HEALTHY"
     assert states["service.health"] == "UNKNOWN"
+
+
+def test_host_observations_publish_canonical_disk_percentages(monkeypatch):
+    host = {
+        "timestamp": "2026-09-12T10:00:00Z",
+        "uptime_seconds": 3600,
+        "root_total_bytes": 10_000,
+        "root_used_bytes": 8_100,
+        "root_free_bytes": 1_900,
+        "root_inode_used_percent": 82,
+        "backup_total_bytes": 20_000,
+        "backup_used_bytes": 18_200,
+        "backup_free_bytes": 1_800,
+        "backup_inode_used_percent": 91,
+        "load_1m": 0.1,
+        "load_5m": 0.2,
+        "load_15m": 0.3,
+    }
+    monkeypatch.setattr(publisher, "read_closed_json", lambda *_: host)
+
+    values = {item["signal"]: item["value"] for item in publisher.host_observations()}
+
+    assert values["disk.root.used_percent"] == 81.0
+    assert values["disk.root.inodes_used_percent"] == 82
+    assert values["disk.backup.used_percent"] == 91.0
+    assert values["disk.backup.inodes_used_percent"] == 91
+    assert "disk.root.inode_used_percent" not in values
+    assert "disk.backup.inode_used_percent" not in values

@@ -41,6 +41,7 @@ ALLOWED_SIGNALS = {
     "disk.root.used_percent",
     "disk.root.inodes_used_percent",
     "disk.backup.used_percent",
+    "disk.backup.inodes_used_percent",
     "backup.directory_bytes",
     "db.reachable",
     "db.version_major",

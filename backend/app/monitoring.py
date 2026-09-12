@@ -95,6 +95,10 @@ def classify(
         "disk.root.used_percent",
         "disk.root.inodes_used_percent",
         "disk.backup.used_percent",
+        "disk.backup.inodes_used_percent",
+        # Persisted observer buffers can still contain the pre-canonical inode names.
+        "disk.root.inode_used_percent",
+        "disk.backup.inode_used_percent",
     }:
         if float(value) > 90:
             return HealthState.CRITICAL, "host_capacity"
