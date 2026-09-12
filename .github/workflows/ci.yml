@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+      - name: Ruff backend
+        working-directory: backend
+        run: python -m ruff check app tests
+      - name: Ruff observer
+        working-directory: observer
+        run: python -m ruff check .
+      - name: Ruff collector
+        working-directory: collector
+        run: python -m ruff check .
+      - name: Test backend
+        working-directory: backend
+        run: python -m pytest
+      - name: Test observer
+        working-directory: observer
+        env:
+          PYTHONPATH: .:../collector
+        run: python -m pytest
+      - name: Test collector
+        working-directory: collector
+        run: python -m pytest
