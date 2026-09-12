@@ -37,4 +37,4 @@ def test_monitoring_seed_is_complete_and_idempotent(monkeypatch, db):
     assert db.scalar(select(func.count()).select_from(Product)) == 1
     assert db.scalar(select(func.count()).select_from(Environment)) == 1
     assert db.scalar(select(func.count()).select_from(Collector)) == 2
-    assert db.scalar(select(func.count()).select_from(Target)) == 12
+    assert db.scalar(select(func.count()).select_from(Target)) == 13

@@ -1,10 +1,13 @@
 import logging
 import time
+from pathlib import Path
 
 from .config import get_settings
 from .database import SessionLocal
 from .logging import configure_logging
-from .notifications import deliver_pending
+from .notifications import deliver_pending, record_worker_heartbeat
+
+HEARTBEAT_PATH = Path("/tmp/notification-worker-heartbeat")
 
 
 def run() -> None:
@@ -17,6 +20,8 @@ def run() -> None:
     while True:
         with SessionLocal() as db:
             deliver_pending(db, settings)
+            record_worker_heartbeat(db)
+        HEARTBEAT_PATH.touch()
         time.sleep(15)
 
 

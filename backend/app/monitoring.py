@@ -32,6 +32,9 @@ TITLES = {
     "mail_delivery_risk": "Mailqueue vereist aandacht",
     "mail_provider_missing": "Mailprovider ontbreekt",
     "service_unhealthy": "Service is niet gezond",
+    "collector_stale": "Collector levert geen verse data",
+    "notification_worker_stale": "Notificatieworker verwerkt niet",
+    "notification_delivery_stale": "Notificatielevering vereist aandacht",
 }
 
 
@@ -131,6 +134,12 @@ def incident_code(signal: str) -> str | None:
         return "mail_delivery_risk"
     if signal.startswith("service."):
         return "service_unhealthy"
+    if signal == "collector.freshness_seconds":
+        return "collector_stale"
+    if signal == "notification.worker_freshness_seconds":
+        return "notification_worker_stale"
+    if signal.startswith("notification.outbox.") or signal == "notification.delivery_health":
+        return "notification_delivery_stale"
     return None
 
 

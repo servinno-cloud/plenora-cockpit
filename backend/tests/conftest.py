@@ -4,13 +4,15 @@ from pathlib import Path
 
 test_database_path = Path(tempfile.gettempdir()) / "cockpit-test.sqlite3"
 
-os.environ.update(
-    COCKPIT_DATABASE_URL=f"sqlite+pysqlite:///{test_database_path.as_posix()}",
-    COCKPIT_SECRET_KEY="test-secret-key-that-is-at-least-thirty-two-characters",
-    COCKPIT_ENV="development",
-    COCKPIT_ALLOWED_HOSTS="testserver,localhost",
-    COCKPIT_COOKIE_SECURE="false",
+os.environ.setdefault(
+    "COCKPIT_DATABASE_URL", f"sqlite+pysqlite:///{test_database_path.as_posix()}"
 )
+os.environ.setdefault(
+    "COCKPIT_SECRET_KEY", "test-secret-key-that-is-at-least-thirty-two-characters"
+)
+os.environ.setdefault("COCKPIT_ENV", "development")
+os.environ.setdefault("COCKPIT_ALLOWED_HOSTS", "testserver,localhost")
+os.environ.setdefault("COCKPIT_COOKIE_SECURE", "false")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -22,10 +24,12 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def clean_database():
+    engine.dispose()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     attempts.clear()
     yield
+    engine.dispose()
 
 
 @pytest.fixture

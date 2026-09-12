@@ -47,6 +47,7 @@ from .models import (
     Product,
     Target,
 )
+from .self_monitoring import collector_inventory
 
 configure_logging()
 logger = logging.getLogger("cockpit.api")
@@ -311,6 +312,10 @@ def snapshot(
     }
     component_states, service_states, overall = aggregate_health(current, stale, targets)
     product = db.get(Product, environment.product_id)
+    inventory = [
+        item for item in collector_inventory(db, settings, now)
+        if item["id"] in {collector.id for collector in collectors}
+    ]
     return {
         "environment_id": environment.id,
         "environment": {
@@ -340,6 +345,7 @@ def snapshot(
                 else None
             ),
             "identities": len(collectors),
+            "identity_statuses": inventory,
         },
         "observed_at": observations[0].observed_at if observations else None,
         "observations": [

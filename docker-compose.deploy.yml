@@ -118,6 +118,51 @@ services:
       cockpit-db: {condition: service_healthy}
     networks: [cockpit-internal, notification-egress]
     tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; import time; p=Path('/tmp/notification-worker-heartbeat'); raise SystemExit(0 if p.exists() and time.time()-p.stat().st_mtime < 60 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits: {memory: 128M, cpus: "0.25"}
+
+  cockpit-self-monitoring-worker:
+    <<: *hardened
+    user: "10001:10001"
+    build:
+      context: ./backend
+      target: production
+    command: [python, -m, app.self_monitoring_worker]
+    environment:
+      COCKPIT_ENV: production
+      COCKPIT_DATABASE_URL: ${DATABASE_URL:?required}
+      COCKPIT_SECRET_KEY: ${COCKPIT_SECRET_KEY:?required}
+      COCKPIT_ALLOWED_ORIGINS: ${COCKPIT_ALLOWED_ORIGINS:?required}
+      COCKPIT_ALLOWED_HOSTS: ${COCKPIT_ALLOWED_HOSTS:?required}
+      COCKPIT_COOKIE_SECURE: "true"
+      COCKPIT_INFRASTRUCTURE_MODE: live
+      COCKPIT_PUBLIC_URL: ${COCKPIT_PUBLIC_URL:?required}
+      COCKPIT_NOTIFICATION_EMAIL_TO: ${COCKPIT_NOTIFICATION_EMAIL_TO:-}
+      COCKPIT_NOTIFICATION_EMAIL_FROM: ${COCKPIT_NOTIFICATION_EMAIL_FROM:-}
+      COCKPIT_NOTIFICATION_SMTP_HOST: ${COCKPIT_NOTIFICATION_SMTP_HOST:-}
+      COCKPIT_SELF_MONITOR_INTERVAL_SECONDS: ${COCKPIT_SELF_MONITOR_INTERVAL_SECONDS:-30}
+      COCKPIT_COLLECTOR_EXPECTED_INTERVAL_SECONDS: ${COLLECTOR_POLL_SECONDS:-60}
+      COCKPIT_COLLECTOR_FRESHNESS_WARNING_SECONDS: ${COCKPIT_COLLECTOR_FRESHNESS_WARNING_SECONDS:-120}
+      COCKPIT_COLLECTOR_FRESHNESS_CRITICAL_SECONDS: ${COCKPIT_COLLECTOR_FRESHNESS_CRITICAL_SECONDS:-300}
+      COCKPIT_NOTIFICATION_WORKER_WARNING_SECONDS: ${COCKPIT_NOTIFICATION_WORKER_WARNING_SECONDS:-45}
+      COCKPIT_NOTIFICATION_WORKER_CRITICAL_SECONDS: ${COCKPIT_NOTIFICATION_WORKER_CRITICAL_SECONDS:-75}
+      COCKPIT_NOTIFICATION_OUTBOX_WARNING_SECONDS: ${COCKPIT_NOTIFICATION_OUTBOX_WARNING_SECONDS:-600}
+      COCKPIT_NOTIFICATION_OUTBOX_CRITICAL_SECONDS: ${COCKPIT_NOTIFICATION_OUTBOX_CRITICAL_SECONDS:-1800}
+    depends_on:
+      cockpit-db: {condition: service_healthy}
+    networks: [cockpit-internal]
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; import time; p=Path('/tmp/self-monitoring-worker-heartbeat'); raise SystemExit(0 if p.exists() and time.time()-p.stat().st_mtime < 90 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
     deploy:
       resources:
         limits: {memory: 128M, cpus: "0.25"}

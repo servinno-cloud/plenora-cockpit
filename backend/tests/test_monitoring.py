@@ -320,6 +320,9 @@ def test_operator_api_exposes_health_and_history(client, db):
     snapshot = client.get(f"/api/environments/{environment.id}/snapshot").json()
     assert snapshot["overall_state"] == "CRITICAL"
     assert snapshot["observations"][0]["code"] == "web_unhealthy"
+    assert snapshot["collector"]["status"] == "ONLINE"
+    assert snapshot["collector"]["identity_statuses"][0]["name"] == "host-1"
+    assert snapshot["collector"]["identity_statuses"][0]["maximum_age_seconds"] == 300
     history = client.get(f"/api/environments/{environment.id}/observations").json()
     assert len(history) == 2
     assert client.get("/api/incidents").json()[0]["lifecycle"] == "OPEN"

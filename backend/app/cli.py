@@ -83,6 +83,7 @@ def seed_monitoring() -> None:
             ("mail-worker", "Mail worker", "Services"),
             ("collector", "Collector", "Collector"),
             ("observer", "Plenora observer", "Observer"),
+            ("cockpit-notifications", "Cockpit notifications", "Cockpit notifications"),
         )
         for key, name, component in targets:
             if not db.scalar(

@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     notification_smtp_password: str = ""
     notification_smtp_starttls: bool = True
     notification_max_attempts: int = 3
+    self_monitor_interval_seconds: int = 30
+    collector_expected_interval_seconds: int = 60
+    collector_freshness_warning_seconds: int = 120
+    collector_freshness_critical_seconds: int = 300
+    notification_worker_warning_seconds: int = 45
+    notification_worker_critical_seconds: int = 75
+    notification_outbox_warning_seconds: int = 600
+    notification_outbox_critical_seconds: int = 1800
     analysis_enabled: bool = False
     analysis_provider: str = "openai"
     analysis_model: str = ""
@@ -58,6 +66,21 @@ class Settings(BaseSettings):
             raise ValueError("COCKPIT_INFRASTRUCTURE_MODE must be live or fixture")
         if self.notification_max_attempts < 1 or self.notification_max_attempts > 10:
             raise ValueError("COCKPIT_NOTIFICATION_MAX_ATTEMPTS must be between 1 and 10")
+        threshold_pairs = (
+            (self.collector_freshness_warning_seconds,
+             self.collector_freshness_critical_seconds),
+            (self.notification_worker_warning_seconds,
+             self.notification_worker_critical_seconds),
+            (self.notification_outbox_warning_seconds,
+             self.notification_outbox_critical_seconds),
+        )
+        intervals_valid = min(
+            self.self_monitor_interval_seconds, self.collector_expected_interval_seconds
+        ) >= 5
+        if not intervals_valid or any(
+            warning < 1 or critical <= warning for warning, critical in threshold_pairs
+        ):
+            raise ValueError("Self-monitoring intervals and thresholds are invalid")
         if not self.public_url.startswith("https://cockpit.plenora.nl"):
             raise ValueError("Notification links must use cockpit.plenora.nl")
         if self.analysis_enabled and (

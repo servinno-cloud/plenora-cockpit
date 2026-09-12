@@ -10,13 +10,39 @@ from sqlalchemy.orm import Session, selectinload
 from .config import Settings
 from .models import (
     Environment,
+    HealthState,
     NotificationDeliveryState,
     NotificationEvent,
     NotificationEventType,
+    Observation,
     Product,
+    Target,
 )
 
 logger = logging.getLogger("cockpit.notifications")
+
+
+def record_worker_heartbeat(db: Session, observed_at: datetime | None = None) -> int:
+    now = observed_at or datetime.now(UTC)
+    targets = list(db.scalars(select(Target).where(Target.key == "cockpit-notifications")))
+    for target in targets:
+        db.add(Observation(
+            snapshot_id=None,
+            environment_id=target.environment_id,
+            target_id=target.id,
+            component=target.component,
+            signal="notification.worker_heartbeat",
+            code="ok",
+            state=HealthState.HEALTHY,
+            observed_at=now,
+            numeric_value=None,
+            text_value=None,
+            unit=None,
+            message="Notificatieworker heeft outbox verwerkt",
+            source="cockpit_self",
+        ))
+    db.commit()
+    return len(targets)
 
 
 class EmailProvider(Protocol):
