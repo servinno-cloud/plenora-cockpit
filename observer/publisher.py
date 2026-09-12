@@ -8,8 +8,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from server import HOST_STATUS, live_services, read_closed_json
 from src.probes import backup_probe, database_connection_probe
+
+from server import HOST_STATUS, live_services, read_closed_json
 
 MAX_PENDING = 50
 REJECTION_CODES = {
