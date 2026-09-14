@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { AppShell } from "./AppShell";
 import { AIUsagePanel, displayRelease, serviceSummary } from "./DashboardClient";
 import { LoginForm } from "./LoginForm";
-import { StatusGrid } from "./StatusGrid";
+import { OffsiteBackupPanel, StatusGrid } from "./StatusGrid";
 import { AnalysisPanel, IncidentList, incidentDuration } from "./IncidentsClient";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname:()=>"/dashboard" }));
@@ -61,6 +61,30 @@ test("service without healthcheck is healthy when running and unhealthy remains 
 });
 test("monitoring cards are explicitly unknown without data", () => {
   render(<StatusGrid observations={[]} />); expect(screen.getAllByText("Nog geen verse observatie")).toHaveLength(6);
+});
+
+test("offsite backup panel shows compact health and operational details",()=>{
+  const offsite={...base,target:"backups",component:"Backups",source:"offsite_status_file"};
+  render(<OffsiteBackupPanel observations={[
+    {...base,target:"backups",component:"Backups",signal:"backup.last_success_at",text_value:"2026-09-14T02:20:25Z",source:"backup_status_file"},
+    {...offsite,signal:"offsite.health",state:"HEALTHY",text_value:"healthy"},
+    {...offsite,signal:"offsite.last_success_at",text_value:"2026-09-14T02:23:25Z"},
+    {...offsite,signal:"offsite.last_finalizer_success_at",text_value:"2026-09-14T02:23:25Z"},
+    {...offsite,signal:"offsite.backup_id",text_value:"2026-09-14T022025Z"},
+    {...offsite,signal:"offsite.success_age_seconds",numeric_value:3600,unit:"s"},
+    {...offsite,signal:"offsite.age_key_version",text_value:"age-2026-02"},
+    {...offsite,signal:"offsite.local_verified",text_value:"verified"},
+    {...offsite,signal:"offsite.object_lock_verified",text_value:"verified"},
+    {...offsite,signal:"offsite.uploader_timer_status",text_value:"active"},
+    {...offsite,signal:"offsite.finalizer_timer_status",text_value:"active"},
+    {...offsite,signal:"offsite.error_code",text_value:""},
+  ]}/>);
+  expect(screen.getByRole("heading",{name:"Offsite backup"})).toBeInTheDocument();
+  expect(screen.getByText("2026-09-14T022025Z")).toBeInTheDocument();
+  expect(screen.getByText("age-2026-02")).toBeInTheDocument();
+  expect(screen.getAllByText("Geverifieerd")).toHaveLength(2);
+  expect(screen.getAllByText("Actief")).toHaveLength(2);
+  expect(screen.getByText("Geen")).toBeInTheDocument();
 });
 
 test("incident operations expose active context and resolved history",()=>{

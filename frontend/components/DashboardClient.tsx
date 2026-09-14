@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/api";
 import { AppShell } from "./AppShell";
-import { Observation, StatusGrid } from "./StatusGrid";
+import { Observation, OffsiteBackupPanel, StatusGrid } from "./StatusGrid";
 
 type Environment={id:string;name:string;product_name:string};
 type CollectorFreshness={id:string;name:string;status:string;last_snapshot_age_seconds:number|null;expected_interval_seconds:number;maximum_age_seconds:number};
@@ -56,6 +56,7 @@ export function DashboardClient() {
       <div className="title-row"><div><p className="page-kicker">Operationele status</p><h1>Overzicht</h1></div><label className="environment-picker"><span>Environment</span><select aria-label="Environment" value={selected} onChange={e=>setSelected(e.target.value)}>{environments.map(e=><option key={e.id} value={e.id}>{e.product_name} · {e.name}</option>)}</select></label></div>
       <section className={`health-summary state-${overall.toLowerCase()}`} aria-labelledby="health-heading"><div><span className="status-dot" /><span>Overall status</span><strong id="health-heading">{overall}</strong></div><p>{snapshot?.observed_at?`Alle statusinformatie bijgewerkt om ${new Date(snapshot.observed_at).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}.`:"Er zijn nog geen actuele metingen ontvangen."}</p></section>
       <StatusGrid observations={snapshot?.observations??[]} componentStates={snapshot?.component_states??{}} />
+      <OffsiteBackupPanel observations={snapshot?.observations??[]} />
       {snapshot?.data_mode==="fixture"?<p className="fixture-note">Lokale infrastructuurfixture — geen productiebron</p>:null}
       <section className="services-panel panel" aria-labelledby="collectors-heading"><div className="section-heading"><div><p className="section-kicker">Monitoringketen</p><h2 id="collectors-heading">Collectors</h2></div><span>Freshness</span></div><div className="services-table" role="table" aria-label="Collector freshness"><div className="service-table-head" role="row"><span role="columnheader">Collector</span><span role="columnheader">Status</span><span role="columnheader">Laatste snapshot</span><span role="columnheader">Maximum</span></div>{(snapshot?.collector.identity_statuses??[]).map(item=><div className={`service-row state-${item.status.toLowerCase()}`} role="row" key={item.id}><b role="cell">{item.name}</b><span role="cell" className="service-state"><i className="status-dot" />{item.status}</span><span role="cell">{item.last_snapshot_age_seconds===null?"Nog niet ontvangen":`${item.last_snapshot_age_seconds}s geleden`}</span><span role="cell">{item.maximum_age_seconds}s</span></div>)}</div></section>
       <AIUsagePanel usage={aiUsage}/>

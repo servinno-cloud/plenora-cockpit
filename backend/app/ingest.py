@@ -28,6 +28,20 @@ ALLOWED_SIGNALS = {
     "backup.checksum_verified",
     "backup.git_commit",
     "backup.success_age_seconds",
+    "offsite.health",
+    "offsite.last_success_at",
+    "offsite.last_finalizer_success_at",
+    "offsite.backup_id",
+    "offsite.status",
+    "offsite.age_key_version",
+    "offsite.local_verified",
+    "offsite.object_lock_verified",
+    "offsite.success_age_seconds",
+    "offsite.uploader_service_status",
+    "offsite.finalizer_service_status",
+    "offsite.uploader_timer_status",
+    "offsite.finalizer_timer_status",
+    "offsite.error_code",
     "host.uptime_seconds",
     "host.load_1m",
     "host.load_5m",
@@ -68,6 +82,14 @@ ALLOWED_SIGNALS = {
     "collector.status",
 }
 TEXT_VALUES = {
+    "offsite.health": {"healthy", "warning", "critical"},
+    "offsite.status": {"never", "running", "success", "partial", "failed"},
+    "offsite.local_verified": {"verified", "not_verified"},
+    "offsite.object_lock_verified": {"verified", "not_verified"},
+    "offsite.uploader_service_status": {"success", "failed"},
+    "offsite.finalizer_service_status": {"success", "failed"},
+    "offsite.uploader_timer_status": {"active", "inactive", "disabled"},
+    "offsite.finalizer_timer_status": {"active", "inactive", "disabled"},
     "mail.provider_state": {"configured", "missing"},
     "service.health": {"healthy", "unhealthy", "starting", "none"},
     "service.release_state": {"current", "unknown"},
@@ -82,6 +104,7 @@ class ObservationBody(BaseModel):
     source: Literal[
         "external_https",
         "backup_status_file",
+        "offsite_status_file",
         "host_metrics",
         "database_contract",
         "mail_contract",
@@ -107,8 +130,16 @@ class ObservationBody(BaseModel):
     def value_is_bounded(cls, value, info):
         signal = info.data.get("signal")
         if isinstance(value, str):
-            if signal in {"backup.last_attempt_at", "backup.last_success_at"}:
-                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if signal in {
+                "backup.last_attempt_at",
+                "backup.last_success_at",
+                "offsite.last_success_at",
+                "offsite.last_finalizer_success_at",
+            }:
+                if not value and signal.startswith("backup."):
+                    raise ValueError("backup timestamp is not safe")
+                if value:
+                    datetime.fromisoformat(value.replace("Z", "+00:00"))
             elif signal == "backup.status" and value not in {"success", "failed"}:
                 raise ValueError("backup status is not allowlisted")
             elif signal == "backup.backup_id" and not re.fullmatch(r"[0-9A-Za-z._-]{1,80}", value):
@@ -117,6 +148,16 @@ class ObservationBody(BaseModel):
                 value == "unknown" or re.fullmatch(r"[0-9a-f]{7,64}", value)
             ):
                 raise ValueError("git commit is not safe")
+            elif signal == "offsite.backup_id" and not (
+                value == "" or re.fullmatch(r"20\d{2}-[01]\d-[0-3]\dT[0-2]\d[0-5]\d[0-5]\dZ", value)
+            ):
+                raise ValueError("offsite backup id is not safe")
+            elif signal == "offsite.age_key_version" and not (
+                value == "" or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", value)
+            ):
+                raise ValueError("offsite key version is not safe")
+            elif signal == "offsite.error_code" and not re.fullmatch(r"[a-z0-9_-]{0,64}", value):
+                raise ValueError("offsite error code is not safe")
             elif signal == "service.started_at":
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
             elif signal == "service.image_identifier" and not re.fullmatch(
@@ -129,6 +170,11 @@ class ObservationBody(BaseModel):
                 "backup.status",
                 "backup.backup_id",
                 "backup.git_commit",
+                "offsite.last_success_at",
+                "offsite.last_finalizer_success_at",
+                "offsite.backup_id",
+                "offsite.age_key_version",
+                "offsite.error_code",
                 "service.started_at",
                 "service.image_identifier",
             } and value not in TEXT_VALUES.get(signal, set()):

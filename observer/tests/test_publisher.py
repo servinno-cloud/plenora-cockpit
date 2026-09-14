@@ -48,10 +48,12 @@ def test_publisher_requires_scoped_identity_and_exact_backup_path(monkeypatch):
 
 def test_snapshot_keeps_mail_unknown_without_contract(monkeypatch):
     monkeypatch.setattr(publisher, "backup_probe", lambda *args: [])
+    monkeypatch.setattr(publisher, "offsite_backup_probe", lambda *args: [])
     monkeypatch.setattr(publisher, "host_observations", lambda: [])
     monkeypatch.setattr(publisher, "database_connection_probe", lambda *args: [])
     monkeypatch.setattr(publisher, "service_observations", lambda: [])
-    config = {"backup_status_path": "exact", "database_url": "db", "collector_id": "c",
+    config = {"backup_status_path": "exact", "offsite_status_path": "offsite",
+              "database_url": "db", "collector_id": "c",
               "environment_id": "e", "release": "release"}
     mail = next(item for item in publisher.build_snapshot(config, 1)["observations"]
                 if item["target"] == "mail")
@@ -60,12 +62,32 @@ def test_snapshot_keeps_mail_unknown_without_contract(monkeypatch):
 
 def test_release_is_bounded_to_snapshot_contract(monkeypatch):
     monkeypatch.setattr(publisher, "backup_probe", lambda *args: [])
+    monkeypatch.setattr(publisher, "offsite_backup_probe", lambda *args: [])
     monkeypatch.setattr(publisher, "host_observations", lambda: [])
     monkeypatch.setattr(publisher, "database_connection_probe", lambda *args: [])
     monkeypatch.setattr(publisher, "service_observations", lambda: [])
-    config = {"backup_status_path": "exact", "database_url": "db", "collector_id": "c",
+    config = {"backup_status_path": "exact", "offsite_status_path": "offsite",
+              "database_url": "db", "collector_id": "c",
               "environment_id": "e", "release": "a" * 40}
     assert publisher.build_snapshot(config, 1)["collector_version"] == "a" * 32
+
+
+def test_snapshot_publishes_offsite_status_through_existing_backup_target(monkeypatch):
+    monkeypatch.setattr(publisher, "backup_probe", lambda *args: [])
+    monkeypatch.setattr(
+        publisher,
+        "offsite_backup_probe",
+        lambda path: [{"target": "backups", "signal": "offsite.health", "value": path}],
+    )
+    monkeypatch.setattr(publisher, "host_observations", lambda: [])
+    monkeypatch.setattr(publisher, "database_connection_probe", lambda *args: [])
+    monkeypatch.setattr(publisher, "service_observations", lambda: [])
+    config = {"backup_status_path": "local", "offsite_status_path": "offsite",
+              "database_url": "db", "collector_id": "c", "environment_id": "e",
+              "release": "release"}
+    item = next(value for value in publisher.build_snapshot(config, 1)["observations"]
+                if value.get("signal") == "offsite.health")
+    assert item == {"target": "backups", "signal": "offsite.health", "value": "offsite"}
 
 
 def test_safe_422_diagnostic_logs_only_closed_code(monkeypatch, tmp_path, capsys):

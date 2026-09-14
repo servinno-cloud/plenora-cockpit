@@ -59,3 +59,18 @@ def test_unreachable_database_and_unhealthy_service_are_critical():
     assert components["Database"] == "CRITICAL"
     assert services["caddy"] == "CRITICAL"
     assert overall == "CRITICAL"
+
+
+def test_existing_local_backup_health_semantics_remain_green():
+    assert classify("backup.status", "success", HealthState.HEALTHY) == (
+        HealthState.HEALTHY,
+        "ok",
+    )
+    assert classify("backup.success_age_seconds", 26 * 3600, HealthState.HEALTHY) == (
+        HealthState.HEALTHY,
+        "ok",
+    )
+    assert classify("backup.checksum_verified", True, HealthState.HEALTHY) == (
+        HealthState.HEALTHY,
+        "ok",
+    )

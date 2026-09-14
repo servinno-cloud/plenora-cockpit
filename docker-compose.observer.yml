@@ -33,6 +33,7 @@ services:
       OBSERVER_MODE: production
       OBSERVER_HOST_STATUS_PATH: /status/host.json
       OBSERVER_BACKUP_STATUS_PATH: /status/backup-status.json
+      OBSERVER_OFFSITE_STATUS_PATH: /status/offsite-status.json
       OBSERVER_CONTAINER_CADDY: ${OBSERVER_CONTAINER_CADDY:?required}
       OBSERVER_CONTAINER_FRONTEND: ${OBSERVER_CONTAINER_FRONTEND:?required}
       OBSERVER_CONTAINER_BACKEND: ${OBSERVER_CONTAINER_BACKEND:?required}

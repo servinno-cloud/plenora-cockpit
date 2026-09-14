@@ -23,6 +23,7 @@ SEVERITY_RANK = {HealthState.DEGRADED: 1, HealthState.WARNING: 2, HealthState.CR
 TITLES = {
     "web_unhealthy": "Web endpoint is niet gezond",
     "backup_unhealthy": "Backupstatus vereist aandacht",
+    "offsite_backup_health": "Offsite-backup vereist aandacht",
     "host_capacity": "Hostcapaciteit vereist aandacht",
     "db_unreachable": "Database is niet bereikbaar",
     "db_performance": "Databaseprestaties vereisen aandacht",
@@ -80,6 +81,14 @@ def classify(
         if float(value) > 93600:
             return HealthState.WARNING, "backup_unhealthy"
         return HealthState.HEALTHY, "ok"
+    if signal == "offsite.health":
+        states = {
+            "healthy": HealthState.HEALTHY,
+            "warning": HealthState.WARNING,
+            "critical": HealthState.CRITICAL,
+        }
+        state = states.get(str(value), HealthState.UNKNOWN)
+        return state, "ok" if state == HealthState.HEALTHY else "offsite_backup_health"
     if signal == "service.running":
         return (
             (HealthState.HEALTHY, "ok")
@@ -116,6 +125,8 @@ def incident_code(signal: str) -> str | None:
         return "web_unhealthy"
     if signal.startswith("backup."):
         return "backup_unhealthy"
+    if signal == "offsite.health":
+        return "offsite_backup_health"
     if signal.startswith("disk."):
         return "host_capacity"
     if signal == "db.reachable":
@@ -240,7 +251,7 @@ def evaluate(db: Session, observation: Observation, target_key: str) -> None:
 
 
 def safe_numeric(value: object) -> Decimal | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return Decimal(str(value))
 

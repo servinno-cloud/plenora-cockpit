@@ -11,6 +11,8 @@ from app.models import (
     Environment,
     Incident,
     IncidentLifecycle,
+    NotificationEvent,
+    NotificationEventType,
     Observation,
     Product,
     Target,
@@ -239,8 +241,6 @@ def test_disk_thresholds_open_escalate_deduplicate_and_recover(client, db):
         )).status_code == 202
     db.expire_all()
     assert db.get(Incident, incident_id).lifecycle == IncidentLifecycle.RESOLVED
-
-
 def test_backup_inode_threshold_uses_canonical_signal(client, db):
     environment, collector = setup_monitoring(db)
     for sequence in (1, 2):
@@ -304,6 +304,49 @@ def test_service_signal_reuses_sprint1_incident_engine(client, db):
         assert post(client, environment, body).status_code == 202
     db.expire_all()
     assert db.get(Incident, incident_id).lifecycle == IncidentLifecycle.RESOLVED
+
+
+def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
+    environment, collector = setup_monitoring(db)
+    start = datetime.now(UTC) - timedelta(seconds=30)
+
+    for sequence in (1, 2):
+        body = payload(
+            environment, collector, sequence, "warning", signal="offsite.health",
+            state="WARNING", target="backups", source="offsite_status_file",
+            observed_at=start + timedelta(seconds=sequence),
+        )
+        assert post(client, environment, body).status_code == 202
+    incident = db.scalar(select(Incident))
+    assert incident and incident.code == "offsite_backup_health"
+    assert incident.severity.value == "WARNING"
+    incident_id = incident.id
+
+    body = payload(
+        environment, collector, 3, "critical", signal="offsite.health",
+        state="CRITICAL", target="backups", source="offsite_status_file",
+        observed_at=start + timedelta(seconds=3),
+    )
+    assert post(client, environment, body).status_code == 202
+    db.expire_all()
+    assert db.get(Incident, incident_id).severity.value == "CRITICAL"
+    assert db.scalar(select(func.count()).select_from(Incident)) == 1
+
+    for sequence in (4, 5):
+        body = payload(
+            environment, collector, sequence, "healthy", signal="offsite.health",
+            state="HEALTHY", target="backups", source="offsite_status_file",
+            observed_at=start + timedelta(seconds=sequence),
+        )
+        assert post(client, environment, body).status_code == 202
+    db.expire_all()
+    assert db.get(Incident, incident_id).lifecycle == IncidentLifecycle.RESOLVED
+    events = list(db.scalars(select(NotificationEvent).order_by(NotificationEvent.created_at)))
+    assert [event.event_type for event in events] == [
+        NotificationEventType.OPENED,
+        NotificationEventType.ESCALATED,
+        NotificationEventType.RESOLVED,
+    ]
 
 
 def test_operator_api_exposes_health_and_history(client, db):

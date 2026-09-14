@@ -167,6 +167,30 @@ publiceert ze atomisch als `/run/plenora-cockpit/backup-status.json` voor de non
 Standaard: ouder dan 26 uur WARNING, ouder dan 48 uur CRITICAL; laatste status failed is minimaal
 WARNING en CRITICAL wanneer geen verse succesvolle set bestaat.
 
+Dezelfde root-owned host-helper reduceert `/var/lib/plenora-offsite/status.json` tot een gesloten,
+privacyarm contract in `/run/plenora-cockpit/offsite-status.json`. Hij voegt uitsluitend read-only
+systemdstatus voor de uploader- en finalizer-oneshots en hun timers toe. De observer publiceert dit
+via het bestaande `backups`-target; providerqueries en credentials zijn geen onderdeel van monitoring.
+
+- `offsite.health` is het enige incidentdragende signaal;
+- `offsite.last_success_at` en `offsite.last_finalizer_success_at`;
+- `offsite.backup_id`, `offsite.status` en `offsite.age_key_version`;
+- `offsite.local_verified` en `offsite.object_lock_verified`;
+- afgeleid `offsite.success_age_seconds`;
+- gesloten uploader/finalizer service- en timerstatussen;
+- `offsite.error_code`, begrensd tot een privacyarme code.
+
+`offsite.health` is HEALTHY bij een volledige succesvolle keten van maximaal 26 uur oud en WARNING
+wanneer uitsluitend de leeftijd boven 26 uur ligt. Ouder dan 48 uur, een niet-successtatus,
+ontbrekende finalisatie/COMPLETE, een negatieve verificatie of Object Lock-controle, een defecte
+service of een inactieve/uitgeschakelde timer is CRITICAL. Een geslaagde oneshot-service mag normaal
+`inactive/dead` zijn. Een ontbrekend of ongeldig statusbestand publiceert `status_unavailable` en
+faalt gesloten naar CRITICAL.
+
+Alle offsite-failures delen incidentcode `offsite_backup_health`. Daardoor gebruikt de keten de
+bestaande twee-metingen-debounce, fingerprintdeduplicatie, escalatie, automatische resolution en
+notification-outbox zonder parallel incidentsysteem of notificatiepad.
+
 Minimale toekomstige, backwards-compatible restore-extensie, zonder Backup v1 nu te wijzigen:
 
 ```json

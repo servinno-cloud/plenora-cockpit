@@ -16,6 +16,34 @@ function duration(seconds:number){
 }
 function date(value:string){return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})}
 
+function statusText(value:string|null){
+  return value==="verified"?"Geverifieerd":value==="not_verified"?"Niet geverifieerd":
+    value==="active"?"Actief":value==="inactive"?"Inactief":value==="disabled"?"Uitgeschakeld":
+    value==="success"?"Geslaagd":value==="failed"?"Mislukt":value||"—";
+}
+
+export function OffsiteBackupPanel({observations}:{observations:Observation[]}){
+  const items=observations.filter(item=>item.signal.startsWith("offsite."));
+  const localSuccess=text(observations,"backup.last_success_at");
+  const health=find(items,"offsite.health")?.state??"UNKNOWN";
+  const age=numeric(items,"offsite.success_age_seconds");
+  const error=text(items,"offsite.error_code");
+  const rows=[
+    ["Laatste lokale backup",localSuccess?date(localSuccess):"—"],
+    ["Laatste offsite backup",text(items,"offsite.last_success_at")?date(text(items,"offsite.last_success_at")!):"—"],
+    ["Finalizer / COMPLETE",text(items,"offsite.last_finalizer_success_at")?date(text(items,"offsite.last_finalizer_success_at")!):"—"],
+    ["Backup-ID",text(items,"offsite.backup_id")||"—"],
+    ["Leeftijd",age===null?"—":duration(age)],
+    ["Key version",text(items,"offsite.age_key_version")||"—"],
+    ["Lokale verificatie",statusText(text(items,"offsite.local_verified"))],
+    ["Object Lock",statusText(text(items,"offsite.object_lock_verified"))],
+    ["Uploader timer",statusText(text(items,"offsite.uploader_timer_status"))],
+    ["Finalizer timer",statusText(text(items,"offsite.finalizer_timer_status"))],
+    ["Laatste foutcode",error||"Geen"],
+  ];
+  return <section className={`panel offsite-panel state-${health.toLowerCase()}`} aria-labelledby="offsite-heading"><div className="section-heading"><div><p className="section-kicker">Backups</p><h2 id="offsite-heading">Offsite backup</h2></div><span className="service-state"><i className="status-dot" />{health}</span></div><dl className="offsite-details">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>;
+}
+
 export function metricLines(component:string,items:Observation[]):string[]{
   const lines:string[]=[];
   if(component==="Web"){

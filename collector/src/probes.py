@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import socket
 import ssl
@@ -7,7 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -122,6 +123,96 @@ def backup_probe(path: str, target="backups", now=None):
         return result
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return [_obs(target, "backup.status", "backup_status_file", None, "UNKNOWN")]
+
+
+def offsite_backup_probe(path: str, target="backups", now=None):
+    keys = {
+        "format_version", "available", "last_success_at", "status",
+        "last_success_backup_id", "age_key_version", "local_verified",
+        "object_lock_verified", "error_code", "uploader_service_ok",
+        "finalizer_service_ok", "uploader_timer_enabled", "uploader_timer_active",
+        "finalizer_timer_enabled", "finalizer_timer_active",
+    }
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(raw, dict) or set(raw) != keys or raw["format_version"] != 1:
+            raise ValueError
+        if not isinstance(raw["available"], bool):
+            raise ValueError
+        boolean_fields = {
+            "local_verified", "uploader_service_ok", "finalizer_service_ok",
+            "uploader_timer_enabled", "uploader_timer_active",
+            "finalizer_timer_enabled", "finalizer_timer_active",
+        }
+        if any(not isinstance(raw[field], bool) for field in boolean_fields):
+            raise ValueError
+        if (
+            raw["object_lock_verified"] is not None
+            and type(raw["object_lock_verified"]) is not bool
+        ):
+            raise ValueError
+        if raw["status"] not in {"never", "running", "success", "partial", "failed"}:
+            raise ValueError
+        if not re.fullmatch(r"[a-z0-9_-]{0,64}", raw["error_code"]):
+            raise ValueError
+
+        current = now or datetime.now(UTC)
+        success_at = None
+        age = None
+        if raw["last_success_at"]:
+            success_at = datetime.fromisoformat(raw["last_success_at"].replace("Z", "+00:00"))
+            if success_at.utcoffset() != timedelta(0):
+                raise ValueError
+            age = max(0, int((current - success_at).total_seconds()))
+
+        hard_failure = (
+            not raw["available"]
+            or raw["status"] != "success"
+            or raw["local_verified"] is not True
+            or raw["object_lock_verified"] is not True
+            or not raw["uploader_service_ok"]
+            or not raw["finalizer_service_ok"]
+            or not raw["uploader_timer_enabled"]
+            or not raw["uploader_timer_active"]
+            or not raw["finalizer_timer_enabled"]
+            or not raw["finalizer_timer_active"]
+            or age is None
+        )
+        health = "CRITICAL" if hard_failure or age > 48 * 3600 else (
+            "WARNING" if age > 26 * 3600 else "HEALTHY"
+        )
+        result = [_obs(target, "offsite.health", "offsite_status_file", health.lower(), health)]
+        details = {
+            "last_success_at": raw["last_success_at"],
+            "last_finalizer_success_at": raw["last_success_at"],
+            "backup_id": raw["last_success_backup_id"],
+            "status": raw["status"],
+            "age_key_version": raw["age_key_version"],
+            "local_verified": "verified" if raw["local_verified"] else "not_verified",
+            "object_lock_verified": (
+                "verified" if raw["object_lock_verified"] is True else "not_verified"
+            ),
+            "success_age_seconds": age,
+            "uploader_service_status": "success" if raw["uploader_service_ok"] else "failed",
+            "finalizer_service_status": "success" if raw["finalizer_service_ok"] else "failed",
+            "uploader_timer_status": (
+                "active" if raw["uploader_timer_enabled"] and raw["uploader_timer_active"]
+                else "disabled" if not raw["uploader_timer_enabled"] else "inactive"
+            ),
+            "finalizer_timer_status": (
+                "active" if raw["finalizer_timer_enabled"] and raw["finalizer_timer_active"]
+                else "disabled" if not raw["finalizer_timer_enabled"] else "inactive"
+            ),
+            "error_code": raw["error_code"],
+        }
+        for key, value in details.items():
+            result.append(_obs(target, f"offsite.{key}", "offsite_status_file", value))
+        return result
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return [
+            _obs(target, "offsite.health", "offsite_status_file", "critical", "CRITICAL"),
+            _obs(target, "offsite.error_code", "offsite_status_file", "status_unavailable"),
+        ]
 
 
 def host_probe(backup_directory=None, target="host"):

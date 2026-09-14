@@ -19,3 +19,4 @@ printf '{"timestamp":"%s","uptime_seconds":%.0f,"root_total_bytes":%s,"root_used
 chmod 0644 "$temporary"
 mv -f "$temporary" "$output"
 /usr/bin/python3 "$script_dir/backup-status-boundary.py"
+/usr/bin/python3 "$script_dir/offsite-status-boundary.py"

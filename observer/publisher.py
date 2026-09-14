@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.probes import backup_probe, database_connection_probe
+from src.probes import backup_probe, database_connection_probe, offsite_backup_probe
 
 from server import HOST_STATUS, live_services, read_closed_json
 
@@ -114,6 +114,7 @@ def service_observations():
 
 def build_snapshot(config, sequence):
     observations = backup_probe(config["backup_status_path"])
+    observations += offsite_backup_probe(config["offsite_status_path"])
     observations += host_observations()
     observations += database_connection_probe(config["database_url"])
     observations += service_observations()
@@ -214,6 +215,9 @@ def environment_config():
     config = {key: os.getenv(name, "") for key, name in mapping.items()}
     config["backup_status_path"] = os.getenv(
         "OBSERVER_BACKUP_STATUS_PATH", "/status/backup-status.json"
+    )
+    config["offsite_status_path"] = os.getenv(
+        "OBSERVER_OFFSITE_STATUS_PATH", "/status/offsite-status.json"
     )
     config["release"] = os.getenv("PLENORA_OBSERVER_RELEASE", "")
     if any(not value for value in config.values()):

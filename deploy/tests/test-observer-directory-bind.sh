@@ -16,8 +16,9 @@ trap cleanup EXIT
 mkdir "$boundary"
 printf '%s\n' '{"version":"A"}' > "$boundary/host.json"
 printf '%s\n' '{"version":"A"}' > "$boundary/backup-status.json"
+printf '%s\n' '{"version":"A"}' > "$boundary/offsite-status.json"
 chmod 0755 "$boundary"
-chmod 0644 "$boundary/host.json" "$boundary/backup-status.json"
+chmod 0644 "$boundary/host.json" "$boundary/backup-status.json" "$boundary/offsite-status.json"
 
 docker build --quiet --target production -t "$image" "$repo_root" >/dev/null
 docker run -d --name "$container" \
@@ -26,7 +27,7 @@ docker run -d --name "$container" \
   --mount "type=bind,src=$boundary,dst=/status,readonly" \
   "$image" python -c 'import time; time.sleep(300)' >/dev/null
 
-for name in host.json backup-status.json; do
+for name in host.json backup-status.json offsite-status.json; do
   [[ "$(docker exec "$container" python -c \
     "from pathlib import Path; print(Path('/status/$name').read_text().strip())")" == \
     '{"version":"A"}' ]]
@@ -37,14 +38,14 @@ import os
 from pathlib import Path
 
 directory = Path(os.environ["BOUNDARY_TEST_DIR"])
-for name in ("host.json", "backup-status.json"):
+for name in ("host.json", "backup-status.json", "offsite-status.json"):
     temporary = directory / f".{name}.tmp"
     temporary.write_text('{"version":"B"}\n')
     os.chmod(temporary, 0o644)
     os.replace(temporary, directory / name)
 PY
 
-for name in host.json backup-status.json; do
+for name in host.json backup-status.json offsite-status.json; do
   [[ "$(docker exec "$container" python -c \
     "from pathlib import Path; print(Path('/status/$name').read_text().strip())")" == \
     '{"version":"B"}' ]]
@@ -62,7 +63,7 @@ fi
 
 [[ "$(docker exec "$container" python -c \
   'from pathlib import Path; print("\n".join(sorted(p.name for p in Path("/status").iterdir())))')" == \
-  $'backup-status.json\nhost.json' ]]
+  $'backup-status.json\nhost.json\noffsite-status.json' ]]
 
 grep -Fqx '      - /run/plenora-cockpit:/status:ro' \
   "$repo_root/docker-compose.observer.yml"

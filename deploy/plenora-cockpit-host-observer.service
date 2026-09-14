@@ -13,5 +13,5 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/run/plenora-cockpit
-ReadOnlyPaths=/var/backups/plenora/status.json
+ReadOnlyPaths=/var/backups/plenora/status.json -/var/lib/plenora-offsite/status.json
 NoNewPrivileges=true
