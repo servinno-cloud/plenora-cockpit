@@ -349,6 +349,22 @@ def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
     ]
 
 
+def test_offsite_pending_grace_does_not_open_or_flap_incident(client, db):
+    environment, collector = setup_monitoring(db)
+    start = datetime.now(UTC) - timedelta(minutes=30)
+
+    for sequence in range(1, 31):
+        body = payload(
+            environment, collector, sequence, "healthy", signal="offsite.health",
+            state="HEALTHY", target="backups", source="offsite_status_file",
+            observed_at=start + timedelta(minutes=sequence),
+        )
+        assert post(client, environment, body).status_code == 202
+
+    assert db.scalar(select(func.count()).select_from(Incident)) == 0
+    assert db.scalar(select(func.count()).select_from(NotificationEvent)) == 0
+
+
 def test_operator_api_exposes_health_and_history(client, db):
     environment, collector = setup_monitoring(db)
     for sequence in (1, 2):

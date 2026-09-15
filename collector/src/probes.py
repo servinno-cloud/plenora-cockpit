@@ -127,7 +127,7 @@ def backup_probe(path: str, target="backups", now=None):
 
 def offsite_backup_probe(path: str, target="backups", now=None):
     keys = {
-        "format_version", "available", "last_success_at", "status",
+        "format_version", "available", "attempted_at", "last_success_at", "status",
         "last_success_backup_id", "age_key_version", "local_verified",
         "object_lock_verified", "error_code", "uploader_service_ok",
         "finalizer_service_ok", "uploader_timer_enabled", "uploader_timer_active",
@@ -157,6 +157,9 @@ def offsite_backup_probe(path: str, target="backups", now=None):
             raise ValueError
 
         current = now or datetime.now(UTC)
+        attempted_at = datetime.fromisoformat(raw["attempted_at"].replace("Z", "+00:00"))
+        if attempted_at.utcoffset() != timedelta(0) or attempted_at > current:
+            raise ValueError
         success_at = None
         age = None
         if raw["last_success_at"]:
@@ -165,18 +168,32 @@ def offsite_backup_probe(path: str, target="backups", now=None):
                 raise ValueError
             age = max(0, int((current - success_at).total_seconds()))
 
+        services_and_timers_ok = (
+            raw["uploader_service_ok"]
+            and raw["finalizer_service_ok"]
+            and raw["uploader_timer_enabled"]
+            and raw["uploader_timer_active"]
+            and raw["finalizer_timer_enabled"]
+            and raw["finalizer_timer_active"]
+        )
+        pending = (
+            raw["status"] == "partial"
+            and raw["error_code"] == "awaiting_provider_verification"
+        )
+        pending_age = int((current - attempted_at).total_seconds())
+        valid_pending = pending and pending_age <= 45 * 60
         hard_failure = (
             not raw["available"]
-            or raw["status"] != "success"
             or raw["local_verified"] is not True
-            or raw["object_lock_verified"] is not True
-            or not raw["uploader_service_ok"]
-            or not raw["finalizer_service_ok"]
-            or not raw["uploader_timer_enabled"]
-            or not raw["uploader_timer_active"]
-            or not raw["finalizer_timer_enabled"]
-            or not raw["finalizer_timer_active"]
+            or not services_and_timers_ok
             or age is None
+            or (
+                not valid_pending
+                and (
+                    raw["status"] != "success"
+                    or raw["object_lock_verified"] is not True
+                )
+            )
         )
         health = "CRITICAL" if hard_failure or age > 48 * 3600 else (
             "WARNING" if age > 26 * 3600 else "HEALTHY"

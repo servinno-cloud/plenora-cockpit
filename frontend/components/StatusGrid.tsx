@@ -28,6 +28,7 @@ export function OffsiteBackupPanel({observations}:{observations:Observation[]}){
   const health=find(items,"offsite.health")?.state??"UNKNOWN";
   const age=numeric(items,"offsite.success_age_seconds");
   const error=text(items,"offsite.error_code");
+  const finalizing=health==="HEALTHY"&&text(items,"offsite.status")==="partial"&&error==="awaiting_provider_verification";
   const rows=[
     ["Laatste lokale backup",localSuccess?date(localSuccess):"—"],
     ["Laatste offsite backup",text(items,"offsite.last_success_at")?date(text(items,"offsite.last_success_at")!):"—"],
@@ -41,7 +42,7 @@ export function OffsiteBackupPanel({observations}:{observations:Observation[]}){
     ["Finalizer timer",statusText(text(items,"offsite.finalizer_timer_status"))],
     ["Laatste foutcode",error||"Geen"],
   ];
-  return <section className={`panel offsite-panel state-${health.toLowerCase()}`} aria-labelledby="offsite-heading"><div className="section-heading"><div><p className="section-kicker">Backups</p><h2 id="offsite-heading">Offsite backup</h2></div><span className="service-state"><i className="status-dot" />{health}</span></div><dl className="offsite-details">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>;
+  return <section className={`panel offsite-panel state-${health.toLowerCase()}`} aria-labelledby="offsite-heading"><div className="section-heading"><div><p className="section-kicker">Backups</p><h2 id="offsite-heading">Offsite backup</h2></div><span className="service-state"><i className="status-dot" />{finalizing?"Finalisatie bezig":health}</span></div><dl className="offsite-details">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>;
 }
 
 export function metricLines(component:string,items:Observation[]):string[]{

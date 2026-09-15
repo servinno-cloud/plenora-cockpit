@@ -87,6 +87,17 @@ test("offsite backup panel shows compact health and operational details",()=>{
   expect(screen.getByText("Geen")).toBeInTheDocument();
 });
 
+test("offsite backup panel presents the healthy grace period as finalizing",()=>{
+  const offsite={...base,target:"backups",component:"Backups",source:"offsite_status_file"};
+  render(<OffsiteBackupPanel observations={[
+    {...offsite,signal:"offsite.health",state:"HEALTHY",text_value:"healthy"},
+    {...offsite,signal:"offsite.status",text_value:"partial"},
+    {...offsite,signal:"offsite.error_code",text_value:"awaiting_provider_verification"},
+  ]}/>);
+  expect(screen.getByText("Finalisatie bezig")).toBeInTheDocument();
+  expect(screen.queryByText("CRITICAL")).not.toBeInTheDocument();
+});
+
 test("incident operations expose active context and resolved history",()=>{
   const incident={id:"one",fingerprint:"abc",component:"Backups",title:"Backupstatus vereist aandacht",severity:"CRITICAL",lifecycle:"OPEN",first_seen_at:"2026-08-18T10:00:00Z",last_seen_at:"2026-08-18T11:15:00Z",resolved_at:null,latest_message:"Checksum kon niet worden bevestigd",environment:"Production",product:"Plenora"};
   render(<IncidentList items={[incident]}/>);

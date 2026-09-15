@@ -150,6 +150,7 @@ def unavailable() -> dict:
     return {
         "format_version": 1,
         "available": False,
+        "attempted_at": "",
         "last_success_at": "",
         "status": "failed",
         "last_success_backup_id": "",
@@ -166,6 +167,7 @@ def payload() -> dict:
         result = {
             "format_version": 1,
             "available": True,
+            "attempted_at": source["attempted_at"],
             "last_success_at": source["last_success_at"],
             "status": source["status"],
             "last_success_backup_id": source["last_success_backup_id"],

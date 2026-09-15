@@ -48,6 +48,7 @@ def offsite_status(now):
     return {
         "format_version": 1,
         "available": True,
+        "attempted_at": now.isoformat().replace("+00:00", "Z"),
         "last_success_at": now.isoformat().replace("+00:00", "Z"),
         "status": "success",
         "last_success_backup_id": "2026-09-14T022025Z",
@@ -98,6 +99,45 @@ def test_offsite_backup_age_thresholds(tmp_path, age, expected):
 def test_offsite_backup_hard_failures_are_critical(tmp_path, changes):
     now = datetime.now(UTC)
     assert offsite_state(tmp_path / "offsite.json", now, **changes) == "CRITICAL"
+
+
+@pytest.mark.parametrize("minutes", (10, 44))
+def test_offsite_pending_provider_verification_uses_grace_period(tmp_path, minutes):
+    now = datetime.now(UTC)
+    assert offsite_state(
+        tmp_path / "offsite.json",
+        now,
+        attempted_at=(now - timedelta(minutes=minutes)).isoformat().replace("+00:00", "Z"),
+        status="partial",
+        object_lock_verified=None,
+        error_code="awaiting_provider_verification",
+    ) == "HEALTHY"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"status": "partial", "error_code": "awaiting_provider_verification",
+         "object_lock_verified": None, "pending_minutes": 46},
+        {"status": "partial", "error_code": "provider_failed",
+         "object_lock_verified": None, "pending_minutes": 10},
+        {"status": "partial", "error_code": "awaiting_provider_verification",
+         "object_lock_verified": None, "local_verified": False, "pending_minutes": 10},
+        {"status": "partial", "error_code": "awaiting_provider_verification",
+         "object_lock_verified": None, "finalizer_service_ok": False, "pending_minutes": 10},
+        {"status": "partial", "error_code": "awaiting_provider_verification",
+         "object_lock_verified": None, "finalizer_timer_enabled": False, "pending_minutes": 10},
+        {"status": "failed", "error_code": "source_commit_unknown", "pending_minutes": 10},
+    ),
+)
+def test_offsite_pending_failures_remain_critical(tmp_path, changes):
+    now = datetime.now(UTC)
+    values = changes.copy()
+    minutes = values.pop("pending_minutes")
+    values["attempted_at"] = (
+        now - timedelta(minutes=minutes)
+    ).isoformat().replace("+00:00", "Z")
+    assert offsite_state(tmp_path / "offsite.json", now, **values) == "CRITICAL"
 
 
 def test_offsite_oneshot_services_may_be_inactive_after_success(tmp_path):
