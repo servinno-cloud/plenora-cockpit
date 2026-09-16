@@ -24,6 +24,10 @@ def _optional_unknown(observation: Observation) -> bool:
         observation.signal == "service.health"
         and observation.state == HealthState.UNKNOWN
         and observation.text_value == "none"
+    ) or (
+        # Null means "not pending" here; offsite.health remains authoritative.
+        observation.signal == "offsite.pending_age_seconds"
+        and observation.state == HealthState.UNKNOWN
     )
 
 

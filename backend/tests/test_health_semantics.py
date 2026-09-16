@@ -74,3 +74,60 @@ def test_existing_local_backup_health_semantics_remain_green():
         HealthState.HEALTHY,
         "ok",
     )
+
+
+def test_recent_verified_local_backup_ignores_non_applicable_offsite_pending_age():
+    items = [
+        observation("Backups", "backup.status"),
+        observation("Backups", "backup.success_age_seconds"),
+        observation("Backups", "backup.checksum_verified"),
+        observation("Backups", "backup.database_bytes"),
+        observation("Backups", "backup.media_bytes"),
+        observation("Backups", "offsite.health"),
+        observation("Backups", "offsite.pending_age_seconds", HealthState.UNKNOWN),
+    ]
+
+    components, _, _ = aggregate_health(
+        items, {item.id: False for item in items}, {}
+    )
+
+    assert components["Backups"] == "HEALTHY"
+
+
+def test_missing_local_backup_status_remains_unknown():
+    items = [
+        observation("Backups", "backup.status", HealthState.UNKNOWN),
+        observation("Backups", "offsite.health"),
+        observation("Backups", "offsite.pending_age_seconds", HealthState.UNKNOWN),
+    ]
+
+    components, _, _ = aggregate_health(
+        items, {item.id: False for item in items}, {}
+    )
+
+    assert components["Backups"] == "UNKNOWN"
+
+
+def test_local_backup_failures_and_offsite_health_keep_existing_severity():
+    assert classify("backup.checksum_verified", False, HealthState.HEALTHY) == (
+        HealthState.CRITICAL,
+        "backup_unhealthy",
+    )
+    assert classify("backup.success_age_seconds", 26 * 3600 + 1, HealthState.HEALTHY) == (
+        HealthState.WARNING,
+        "backup_unhealthy",
+    )
+    assert classify("backup.success_age_seconds", 48 * 3600 + 1, HealthState.HEALTHY) == (
+        HealthState.CRITICAL,
+        "backup_unhealthy",
+    )
+
+    items = [
+        observation("Backups", "backup.status"),
+        observation("Backups", "offsite.health", HealthState.CRITICAL),
+        observation("Backups", "offsite.pending_age_seconds", HealthState.UNKNOWN),
+    ]
+    components, _, _ = aggregate_health(
+        items, {item.id: False for item in items}, {}
+    )
+    assert components["Backups"] == "CRITICAL"
