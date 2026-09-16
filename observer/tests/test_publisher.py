@@ -69,7 +69,7 @@ def test_release_is_bounded_to_snapshot_contract(monkeypatch):
     config = {"backup_status_path": "exact", "offsite_status_path": "offsite",
               "database_url": "db", "collector_id": "c",
               "environment_id": "e", "release": "a" * 40}
-    assert publisher.build_snapshot(config, 1)["collector_version"] == "a" * 32
+    assert publisher.build_snapshot(config, 1)["collector_version"] == "a" * 40
 
 
 def test_snapshot_publishes_offsite_status_through_existing_backup_target(monkeypatch):

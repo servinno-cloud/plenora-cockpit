@@ -132,7 +132,7 @@ def build_snapshot(config, sequence):
         "environment_id": config["environment_id"],
         "sequence": sequence,
         "generated_at": now(),
-        "collector_version": config["release"][:32],
+        "collector_version": config["release"],
         "observations": observations,
     }
 

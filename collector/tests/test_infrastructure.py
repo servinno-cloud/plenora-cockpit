@@ -209,4 +209,4 @@ def test_external_snapshot_contains_only_web_and_self_monitoring(monkeypatch):
     snapshot = build_snapshot(config, 1)
     targets = {item["target"] for item in snapshot["observations"]}
     assert targets == {"collector"}
-    assert snapshot["collector_version"] == "a" * 32
+    assert snapshot["collector_version"] == "a" * 40

@@ -226,7 +226,7 @@ class SnapshotBody(BaseModel):
     environment_id: uuid.UUID
     sequence: int = Field(gt=0)
     generated_at: datetime
-    collector_version: str = Field(pattern=r"^[0-9A-Za-z._-]{1,32}$")
+    collector_version: str = Field(pattern=r"^[0-9A-Za-z._-]{1,64}$")
     observations: list[ObservationBody] = Field(max_length=100)
 
 

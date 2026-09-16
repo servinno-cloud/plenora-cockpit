@@ -59,7 +59,7 @@ def build_snapshot(config: dict[str, str], sequence: int) -> dict:
         "environment_id": config["environment_id"],
         "sequence": sequence,
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "collector_version": config.get("release", "development")[:32],
+        "collector_version": config.get("release", "development"),
         "observations": observations,
     }
 

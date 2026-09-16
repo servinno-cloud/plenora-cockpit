@@ -446,7 +446,7 @@ def test_ingest_rejects_credentials_schema_and_write_routes(client, db):
 def test_external_production_snapshot_passes_snapshot_v1_validation(client, db):
     environment, collector = setup_monitoring(db)
     body = payload(environment, collector)
-    body["collector_version"] = "a" * 40
+    body["collector_version"] = "a" * 65
     observed_at = body["observations"][0]["observed_at"]
     body["observations"] = [
         {
@@ -484,7 +484,7 @@ def test_external_production_snapshot_passes_snapshot_v1_validation(client, db):
     response = post(client, environment, body)
     assert response.status_code == 422
     assert response.json() == {"error_code": "snapshot_invalid.collector_version"}
-    body["collector_version"] = body["collector_version"][:32]
+    body["collector_version"] = body["collector_version"][:40]
     assert post(client, environment, body).status_code == 202
     assert db.scalar(select(func.count()).select_from(Observation)) == 7
 
@@ -559,11 +559,11 @@ def test_exact_production_observer_snapshot_is_accepted(client, db):
         item("observer", "collector.status", "collector_self", "online"),
     ])
     body = payload(environment, collector)
-    body["collector_version"] = "0123456789abcdef0123456789abcdef"
+    body["collector_version"] = "0123456789abcdef0123456789abcdef01234567"
     body["observations"] = observations
     response = post(client, environment, body)
     assert response.status_code == 202
-    assert body["collector_version"] == "0123456789abcdef0123456789abcdef"
+    assert body["collector_version"] == "0123456789abcdef0123456789abcdef01234567"
     values = {item["signal"]: item["value"] for item in body["observations"]}
     assert values["backup.git_commit"] == "unknown"
     assert values["offsite.current_backup_id"] == "2026-08-18T130000Z"
