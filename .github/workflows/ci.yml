@@ -41,7 +41,14 @@ jobs:
       - name: Test deployment shell contracts
         run: |
           for test_script in deploy/tests/test-*.sh; do
-            bash "$test_script"
+            case "$test_script" in
+              *test-configure-analysis.sh|*test-configure-notifications.sh)
+                sudo bash "$test_script"
+                ;;
+              *)
+                bash "$test_script"
+                ;;
+            esac
           done
       - uses: actions/setup-node@v4
         with:
