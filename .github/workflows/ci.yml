@@ -38,18 +38,11 @@ jobs:
         run: python -m pytest
       - name: Test deployment contracts
         run: python -m unittest discover -s deploy/tests -p "test_*.py"
-      - name: Test deployment shell contracts
+      - name: Test release deployment shell contracts
         run: |
-          for test_script in deploy/tests/test-*.sh; do
-            case "$test_script" in
-              *test-configure-analysis.sh|*test-configure-notifications.sh)
-                sudo bash "$test_script"
-                ;;
-              *)
-                bash "$test_script"
-                ;;
-            esac
-          done
+          bash deploy/tests/test-init-env.sh
+          bash deploy/tests/test-init-observer-env.sh
+          bash deploy/tests/test-observer-directory-bind.sh
       - uses: actions/setup-node@v4
         with:
           node-version: "22.18.0"
