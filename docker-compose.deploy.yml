@@ -24,7 +24,7 @@ services:
     security_opt: [no-new-privileges:true]
     deploy:
       resources:
-        limits: {memory: 512M, cpus: "1.0"}
+        limits: {memory: 768M, cpus: "1.0"}
 
   cockpit-backend:
     <<: *hardened
