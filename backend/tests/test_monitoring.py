@@ -512,6 +512,18 @@ def test_exact_production_observer_snapshot_is_accepted(client, db):
         item("backups", "backup.checksum_verified", "backup_status_file", True),
         item("backups", "backup.git_commit", "backup_status_file", "unknown"),
         item("backups", "backup.success_age_seconds", "backup_status_file", 0, unit="s"),
+        item("backups", "offsite.health", "offsite_status_file", "healthy"),
+        item("backups", "offsite.current_backup_id", "offsite_status_file",
+             "2026-08-18T130000Z"),
+        item("backups", "offsite.last_success_backup_id", "offsite_status_file",
+             "2026-08-18T120000Z"),
+        item("backups", "offsite.attempted_at", "offsite_status_file", current),
+        item("backups", "offsite.pending_age_seconds", "offsite_status_file", None),
+        item("backups", "offsite.status", "offsite_status_file", "success"),
+        item("backups", "offsite.health_reason", "offsite_status_file", "healthy"),
+        item("backups", "offsite.error_code", "offsite_status_file", ""),
+        item("backups", "offsite.local_verified", "offsite_status_file", "verified"),
+        item("backups", "offsite.object_lock_verified", "offsite_status_file", "unknown"),
         item("host", "host.uptime_seconds", "host_metrics", 86400, unit="s"),
         item("host", "disk.root.used_bytes", "host_metrics", 4000, unit="bytes"),
         item("host", "disk.root.free_bytes", "host_metrics", 6000, unit="bytes"),
@@ -554,6 +566,9 @@ def test_exact_production_observer_snapshot_is_accepted(client, db):
     assert body["collector_version"] == "0123456789abcdef0123456789abcdef"
     values = {item["signal"]: item["value"] for item in body["observations"]}
     assert values["backup.git_commit"] == "unknown"
+    assert values["offsite.current_backup_id"] == "2026-08-18T130000Z"
+    assert values["offsite.last_success_backup_id"] == "2026-08-18T120000Z"
+    assert values["offsite.object_lock_verified"] == "unknown"
     assert values["db.django_migration_count"] == 42
     assert values["db.migration_current"] is None
 

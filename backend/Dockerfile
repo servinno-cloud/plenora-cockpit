@@ -1,6 +1,9 @@
 FROM python:3.12-slim AS base
+ARG BUILD_COMMIT=development
 WORKDIR /app
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app \
+    COCKPIT_RELEASE=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 RUN useradd --create-home --uid 10001 cockpit

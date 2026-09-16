@@ -1,8 +1,9 @@
 FROM node:22.18.0-alpine AS base
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8100
-ARG COCKPIT_RELEASE=development
+ARG BUILD_COMMIT=development
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
-ENV NEXT_PUBLIC_COCKPIT_RELEASE=${COCKPIT_RELEASE}
+ENV NEXT_PUBLIC_COCKPIT_RELEASE=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 WORKDIR /app
@@ -19,10 +20,13 @@ FROM base AS build
 RUN pnpm build
 
 FROM node:22.18.0-alpine AS production
+ARG BUILD_COMMIT=development
 WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ENV NEXT_PUBLIC_COCKPIT_RELEASE=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static

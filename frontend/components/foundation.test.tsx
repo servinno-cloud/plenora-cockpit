@@ -70,17 +70,22 @@ test("offsite backup panel shows compact health and operational details",()=>{
     {...offsite,signal:"offsite.health",state:"HEALTHY",text_value:"healthy"},
     {...offsite,signal:"offsite.last_success_at",text_value:"2026-09-14T02:23:25Z"},
     {...offsite,signal:"offsite.last_finalizer_success_at",text_value:"2026-09-14T02:23:25Z"},
-    {...offsite,signal:"offsite.backup_id",text_value:"2026-09-14T022025Z"},
+    {...offsite,signal:"offsite.current_backup_id",text_value:"2026-09-14T031500Z"},
+    {...offsite,signal:"offsite.last_success_backup_id",text_value:"2026-09-14T022025Z"},
+    {...offsite,signal:"offsite.pending_age_seconds",numeric_value:125,unit:"s"},
     {...offsite,signal:"offsite.success_age_seconds",numeric_value:3600,unit:"s"},
     {...offsite,signal:"offsite.age_key_version",text_value:"age-2026-02"},
     {...offsite,signal:"offsite.local_verified",text_value:"verified"},
-    {...offsite,signal:"offsite.object_lock_verified",text_value:"verified"},
+    {...offsite,signal:"offsite.object_lock_verified",text_value:"true"},
     {...offsite,signal:"offsite.uploader_timer_status",text_value:"active"},
     {...offsite,signal:"offsite.finalizer_timer_status",text_value:"active"},
+    {...offsite,signal:"offsite.health_reason",text_value:"healthy"},
     {...offsite,signal:"offsite.error_code",text_value:""},
   ]}/>);
   expect(screen.getByRole("heading",{name:"Offsite backup"})).toBeInTheDocument();
+  expect(screen.getByText("2026-09-14T031500Z")).toBeInTheDocument();
   expect(screen.getByText("2026-09-14T022025Z")).toBeInTheDocument();
+  expect(screen.getByText("2 min")).toBeInTheDocument();
   expect(screen.getByText("age-2026-02")).toBeInTheDocument();
   expect(screen.getAllByText("Geverifieerd")).toHaveLength(2);
   expect(screen.getAllByText("Actief")).toHaveLength(2);
@@ -93,8 +98,14 @@ test("offsite backup panel presents the healthy grace period as finalizing",()=>
     {...offsite,signal:"offsite.health",state:"HEALTHY",text_value:"healthy"},
     {...offsite,signal:"offsite.status",text_value:"partial"},
     {...offsite,signal:"offsite.error_code",text_value:"awaiting_provider_verification"},
+    {...offsite,signal:"offsite.pending_age_seconds",numeric_value:600,unit:"s"},
+    {...offsite,signal:"offsite.health_reason",text_value:"pending_provider_verification"},
+    {...offsite,signal:"offsite.object_lock_verified",text_value:"unknown"},
   ]}/>);
   expect(screen.getByText("Finalisatie bezig")).toBeInTheDocument();
+  expect(screen.getByText("10 min")).toBeInTheDocument();
+  expect(screen.getByText("Wacht op providerverificatie")).toBeInTheDocument();
+  expect(screen.getByText("Onbekend")).toBeInTheDocument();
   expect(screen.queryByText("CRITICAL")).not.toBeInTheDocument();
 });
 

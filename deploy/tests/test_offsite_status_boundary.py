@@ -62,6 +62,7 @@ class OffsiteStatusBoundaryTests(unittest.TestCase):
         result = json.loads(self.target.read_text(encoding="utf-8"))
         self.assertTrue(result["available"])
         self.assertEqual(result["attempted_at"], "2026-09-14T02:23:25Z")
+        self.assertEqual(result["backup_id"], "2026-09-14T022025Z")
         self.assertEqual(result["last_success_backup_id"], "2026-09-14T022025Z")
         self.assertNotIn("ciphertext_sha256", result)
         self.assertNotIn("remote_bucket_identifier", result)
@@ -73,6 +74,7 @@ class OffsiteStatusBoundaryTests(unittest.TestCase):
         boundary.main()
         missing = json.loads(self.target.read_text(encoding="utf-8"))
         self.assertFalse(missing["available"])
+        self.assertEqual(missing["backup_id"], "")
         self.assertEqual(missing["error_code"], "status_unavailable")
 
         self.source.write_text(

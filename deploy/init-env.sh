@@ -158,6 +158,7 @@ if [[ -n "$observer_id" || -n "$observer_token" ]]; then
   fi
 fi
 release="$(git -C "$repo_root" rev-parse --verify HEAD)"
+export DEPLOYMENT_RELEASE="$release"
 database_url="postgresql+psycopg://${postgres_user}:${postgres_password}@cockpit-db:5432/${postgres_db}"
 
 temporary="$(mktemp "$repo_root/.env.deploy.tmp.XXXXXX")"
@@ -174,7 +175,6 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     COCKPIT_MONITORING_COLLECTOR_SECRET) printf 'COCKPIT_MONITORING_COLLECTOR_SECRET=%s\n' "$collector_secret" ;;
     COCKPIT_MONITORING_COLLECTOR_ID) printf 'COCKPIT_MONITORING_COLLECTOR_ID=%s\n' "$monitoring_collector_id" ;;
     COCKPIT_MONITORING_ENVIRONMENT_ID) printf 'COCKPIT_MONITORING_ENVIRONMENT_ID=%s\n' "$monitoring_environment_id" ;;
-    COCKPIT_RELEASE) printf 'COCKPIT_RELEASE=%s\n' "$release" ;;
     COCKPIT_MAIL_INTEGRATION_ENABLED) printf '%s\n' 'COCKPIT_MAIL_INTEGRATION_ENABLED=false' ;;
     PLENORA_OBSERVER_ID) printf 'PLENORA_OBSERVER_ID=%s\n' "$observer_id" ;;
     PLENORA_OBSERVER_TOKEN) printf 'PLENORA_OBSERVER_TOKEN=%s\n' "$observer_token" ;;

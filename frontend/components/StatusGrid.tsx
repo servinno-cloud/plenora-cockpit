@@ -14,32 +14,57 @@ function duration(seconds:number){
   const days=Math.floor(seconds/86400); if(days)return `${days} d`;
   const hours=Math.floor(seconds/3600); return `${hours} u`;
 }
+function pendingDuration(seconds:number){
+  if(seconds<60)return `${Math.max(0,Math.floor(seconds))} sec`;
+  if(seconds<3600)return `${Math.floor(seconds/60)} min`;
+  return duration(seconds);
+}
 function date(value:string){return new Date(value).toLocaleString("nl-NL",{dateStyle:"short",timeStyle:"short"})}
 
 function statusText(value:string|null){
-  return value==="verified"?"Geverifieerd":value==="not_verified"?"Niet geverifieerd":
+  return value==="verified"||value==="true"?"Geverifieerd":
+    value==="not_verified"||value==="false"?"Niet geverifieerd":value==="unknown"?"Onbekend":
     value==="active"?"Actief":value==="inactive"?"Inactief":value==="disabled"?"Uitgeschakeld":
     value==="success"?"Geslaagd":value==="failed"?"Mislukt":value||"—";
 }
+
+const healthReasons:Record<string,string>={
+  healthy:"Gezond",
+  pending_provider_verification:"Wacht op providerverificatie",
+  pending_provider_verification_expired:"Providerverificatie duurt te lang",
+  status_unavailable:"Status niet beschikbaar",
+  local_verify_failed:"Lokale verificatie mislukt",
+  uploader_failed:"Uploader mislukt",
+  finalizer_failed:"Finalizer mislukt",
+  timer_inactive:"Timer niet actief",
+  last_success_missing:"Laatste succes ontbreekt",
+  last_success_stale:"Laatste succes is verouderd",
+  offsite_status_not_success:"Offsite-status niet succesvol",
+  object_lock_not_verified:"Object Lock niet geverifieerd",
+};
 
 export function OffsiteBackupPanel({observations}:{observations:Observation[]}){
   const items=observations.filter(item=>item.signal.startsWith("offsite."));
   const localSuccess=text(observations,"backup.last_success_at");
   const health=find(items,"offsite.health")?.state??"UNKNOWN";
   const age=numeric(items,"offsite.success_age_seconds");
+  const pendingAge=numeric(items,"offsite.pending_age_seconds");
   const error=text(items,"offsite.error_code");
+  const reason=text(items,"offsite.health_reason");
   const finalizing=health==="HEALTHY"&&text(items,"offsite.status")==="partial"&&error==="awaiting_provider_verification";
   const rows=[
     ["Laatste lokale backup",localSuccess?date(localSuccess):"—"],
     ["Laatste offsite backup",text(items,"offsite.last_success_at")?date(text(items,"offsite.last_success_at")!):"—"],
-    ["Finalizer / COMPLETE",text(items,"offsite.last_finalizer_success_at")?date(text(items,"offsite.last_finalizer_success_at")!):"—"],
-    ["Backup-ID",text(items,"offsite.backup_id")||"—"],
+    ["Huidige poging",text(items,"offsite.current_backup_id")||"—"],
+    ["Laatste succesvolle backup",text(items,"offsite.last_success_backup_id")||"—"],
+    ["Pending leeftijd",pendingAge===null?"—":pendingDuration(pendingAge)],
     ["Leeftijd",age===null?"—":duration(age)],
     ["Key version",text(items,"offsite.age_key_version")||"—"],
     ["Lokale verificatie",statusText(text(items,"offsite.local_verified"))],
     ["Object Lock",statusText(text(items,"offsite.object_lock_verified"))],
     ["Uploader timer",statusText(text(items,"offsite.uploader_timer_status"))],
     ["Finalizer timer",statusText(text(items,"offsite.finalizer_timer_status"))],
+    ["Health reason",reason?(healthReasons[reason]??reason):"—"],
     ["Laatste foutcode",error||"Geen"],
   ];
   return <section className={`panel offsite-panel state-${health.toLowerCase()}`} aria-labelledby="offsite-heading"><div className="section-heading"><div><p className="section-kicker">Backups</p><h2 id="offsite-heading">Offsite backup</h2></div><span className="service-state"><i className="status-dot" />{finalizing?"Finalisatie bezig":health}</span></div><dl className="offsite-details">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>;

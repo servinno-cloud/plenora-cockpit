@@ -6,6 +6,8 @@ services:
       context: .
       dockerfile: observer/Dockerfile
       target: publisher
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/observer-deploy.sh}
     user: "0:0"
     command: [sh, -eu, -c, "chown 0:0 /state && chmod 0700 /state && chown 10003:10003 /state"]
     volumes:
@@ -22,13 +24,14 @@ services:
       context: .
       dockerfile: observer/Dockerfile
       target: publisher
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/observer-deploy.sh}
     environment:
       PLENORA_OBSERVER_ID: ${PLENORA_OBSERVER_ID:?required}
       PLENORA_OBSERVER_TOKEN: ${PLENORA_OBSERVER_TOKEN:?required}
       COCKPIT_ENVIRONMENT_ID: ${COLLECTOR_ENVIRONMENT_ID:?required}
       COCKPIT_INGEST_URL: ${COCKPIT_INGEST_URL:?required}
       PLENORA_MONITOR_DATABASE_URL: ${PLENORA_MONITOR_DATABASE_URL:?required}
-      PLENORA_OBSERVER_RELEASE: ${PLENORA_OBSERVER_RELEASE:?required}
       PLENORA_OBSERVER_POLL_SECONDS: ${PLENORA_OBSERVER_POLL_SECONDS:-60}
       OBSERVER_MODE: production
       OBSERVER_HOST_STATUS_PATH: /status/host.json

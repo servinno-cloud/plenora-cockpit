@@ -97,6 +97,7 @@ if [[ ! "$database_url" =~ $database_url_pattern ]] ||
 fi
 
 release="$(git -C "$repo_root" rev-parse --verify HEAD)"
+export DEPLOYMENT_RELEASE="$release"
 temporary="$(mktemp "$repo_root/.env.observer.tmp.XXXXXX")"
 while IFS= read -r line || [[ -n "$line" ]]; do
   key="${line%%=*}"
@@ -105,7 +106,6 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     COLLECTOR_ENVIRONMENT_ID) printf 'COLLECTOR_ENVIRONMENT_ID=%s\n' "$environment_id" ;;
     PLENORA_OBSERVER_ID) printf 'PLENORA_OBSERVER_ID=%s\n' "$observer_id" ;;
     PLENORA_OBSERVER_TOKEN) printf 'PLENORA_OBSERVER_TOKEN=%s\n' "$observer_token" ;;
-    PLENORA_OBSERVER_RELEASE) printf 'PLENORA_OBSERVER_RELEASE=%s\n' "$release" ;;
     PLENORA_MONITOR_DATABASE_URL) printf 'PLENORA_MONITOR_DATABASE_URL=%s\n' "$database_url" ;;
     DOCKER_GID) printf '%s\n' 'DOCKER_GID=988' ;;
     PLENORA_NETWORK) printf '%s\n' 'PLENORA_NETWORK=app_default' ;;

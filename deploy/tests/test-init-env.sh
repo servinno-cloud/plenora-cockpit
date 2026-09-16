@@ -18,7 +18,7 @@ printf '%s\n' '0123456789abcdef0123456789abcdef01234567'
 EOF
 cat > "$test_root/bin/docker" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "${INIT_ENV_DOCKER_CALLS:?}"
+printf '%s|%s\n' "${DEPLOYMENT_RELEASE:-unset}" "$*" >> "${INIT_ENV_DOCKER_CALLS:?}"
 [[ "$*" == *'compose --env-file '*'-f '*'/docker-compose.deploy.yml config --quiet' ]]
 EOF
 chmod 700 "$test_root/bin/git" "$test_root/bin/docker"
@@ -38,10 +38,14 @@ set +a
 [[ "$COCKPIT_MONITORING_ENVIRONMENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$ ]]
 [[ "$COCKPIT_MONITORING_COLLECTOR_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$ ]]
 [[ "$DATABASE_URL" == "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@cockpit-db:5432/${POSTGRES_DB}" ]]
-[[ "$COCKPIT_RELEASE" == '0123456789abcdef0123456789abcdef01234567' ]]
+[[ -z "${COCKPIT_RELEASE:-}" ]]
 [[ "$COCKPIT_MAIL_INTEGRATION_ENABLED" == 'false' ]]
 [[ -z "$PLENORA_OBSERVER_ID" && -z "$PLENORA_OBSERVER_TOKEN" ]]
 [[ "$(wc -l < "$test_root/docker.calls")" -eq 2 ]]
+grep -Eq '^0123456789abcdef0123456789abcdef01234567\|' "$test_root/docker.calls"
+! grep -q '^unset|' "$test_root/docker.calls"
+grep -Fq 'BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}' "$test_root/docker-compose.deploy.yml"
+! grep -Fq 'COCKPIT_RELEASE:' "$test_root/docker-compose.deploy.yml"
 grep -Fq 'COCKPIT_MONITORING_ENVIRONMENT_ID: ${COCKPIT_MONITORING_ENVIRONMENT_ID:?required}' "$test_root/docker-compose.deploy.yml"
 grep -Fq 'COCKPIT_MONITORING_COLLECTOR_ID: ${COCKPIT_MONITORING_COLLECTOR_ID:?required}' "$test_root/docker-compose.deploy.yml"
 grep -Fq 'COCKPIT_MONITORING_COLLECTOR_SECRET: ${COCKPIT_MONITORING_COLLECTOR_SECRET:?required}' "$test_root/docker-compose.deploy.yml"

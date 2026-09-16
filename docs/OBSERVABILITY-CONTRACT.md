@@ -174,11 +174,18 @@ via het bestaande `backups`-target; providerqueries en credentials zijn geen ond
 
 - `offsite.health` is het enige incidentdragende signaal;
 - `offsite.last_success_at` en `offsite.last_finalizer_success_at`;
-- `offsite.backup_id`, `offsite.status` en `offsite.age_key_version`;
+- `offsite.current_backup_id` voor de actuele poging en
+  `offsite.last_success_backup_id` voor de laatst bewezen succesvolle set;
+- `offsite.attempted_at`, `offsite.pending_age_seconds`, `offsite.status` en
+  `offsite.age_key_version`;
 - `offsite.local_verified` en `offsite.object_lock_verified`;
 - afgeleid `offsite.success_age_seconds`;
 - gesloten uploader/finalizer service- en timerstatussen;
-- `offsite.error_code`, begrensd tot een privacyarme code.
+- `offsite.error_code`, begrensd tot een privacyarme code;
+- `offsite.health_reason`, de deterministische primaire reden voor HEALTHY, WARNING of CRITICAL.
+
+`offsite.object_lock_verified` behoudt de bronsemantiek als `true`, `false` of `unknown`.
+De actuele en laatst succesvolle backup-ID worden nooit in hetzelfde veld samengevoegd.
 
 `offsite.health` is HEALTHY bij een volledige succesvolle keten van maximaal 26 uur oud en WARNING
 wanneer uitsluitend de leeftijd boven 26 uur ligt. Ouder dan 48 uur, een niet-successtatus,

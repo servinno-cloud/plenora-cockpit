@@ -128,7 +128,7 @@ def backup_probe(path: str, target="backups", now=None):
 def offsite_backup_probe(path: str, target="backups", now=None):
     keys = {
         "format_version", "available", "attempted_at", "last_success_at", "status",
-        "last_success_backup_id", "age_key_version", "local_verified",
+        "backup_id", "last_success_backup_id", "age_key_version", "local_verified",
         "object_lock_verified", "error_code", "uploader_service_ok",
         "finalizer_service_ok", "uploader_timer_enabled", "uploader_timer_active",
         "finalizer_timer_enabled", "finalizer_timer_active",
@@ -168,46 +168,63 @@ def offsite_backup_probe(path: str, target="backups", now=None):
                 raise ValueError
             age = max(0, int((current - success_at).total_seconds()))
 
-        services_and_timers_ok = (
-            raw["uploader_service_ok"]
-            and raw["finalizer_service_ok"]
-            and raw["uploader_timer_enabled"]
-            and raw["uploader_timer_active"]
-            and raw["finalizer_timer_enabled"]
-            and raw["finalizer_timer_active"]
-        )
         pending = (
             raw["status"] == "partial"
             and raw["error_code"] == "awaiting_provider_verification"
         )
-        pending_age = int((current - attempted_at).total_seconds())
+        pending_age = max(0, int((current - attempted_at).total_seconds()))
         valid_pending = pending and pending_age <= 45 * 60
-        hard_failure = (
-            not raw["available"]
-            or raw["local_verified"] is not True
-            or not services_and_timers_ok
-            or age is None
-            or (
-                not valid_pending
-                and (
-                    raw["status"] != "success"
-                    or raw["object_lock_verified"] is not True
-                )
-            )
-        )
-        health = "CRITICAL" if hard_failure or age > 48 * 3600 else (
-            "WARNING" if age > 26 * 3600 else "HEALTHY"
-        )
+        critical_reason = None
+        if not raw["available"]:
+            critical_reason = "status_unavailable"
+        elif raw["local_verified"] is not True:
+            critical_reason = "local_verify_failed"
+        elif not raw["uploader_service_ok"]:
+            critical_reason = "uploader_failed"
+        elif not raw["finalizer_service_ok"]:
+            critical_reason = "finalizer_failed"
+        elif not (
+            raw["uploader_timer_enabled"]
+            and raw["uploader_timer_active"]
+            and raw["finalizer_timer_enabled"]
+            and raw["finalizer_timer_active"]
+        ):
+            critical_reason = "timer_inactive"
+        elif age is None:
+            critical_reason = "last_success_missing"
+        elif pending and not valid_pending:
+            critical_reason = "pending_provider_verification_expired"
+        elif not valid_pending and raw["status"] != "success":
+            critical_reason = "offsite_status_not_success"
+        elif not valid_pending and raw["object_lock_verified"] is not True:
+            critical_reason = "object_lock_not_verified"
+
+        if critical_reason:
+            health, health_reason = "CRITICAL", critical_reason
+        elif age > 48 * 3600:
+            health, health_reason = "CRITICAL", "last_success_stale"
+        elif age > 26 * 3600:
+            health, health_reason = "WARNING", "last_success_stale"
+        elif valid_pending:
+            health, health_reason = "HEALTHY", "pending_provider_verification"
+        else:
+            health, health_reason = "HEALTHY", "healthy"
         result = [_obs(target, "offsite.health", "offsite_status_file", health.lower(), health)]
         details = {
+            "current_backup_id": raw["backup_id"],
+            "last_success_backup_id": raw["last_success_backup_id"],
+            "attempted_at": raw["attempted_at"],
             "last_success_at": raw["last_success_at"],
             "last_finalizer_success_at": raw["last_success_at"],
-            "backup_id": raw["last_success_backup_id"],
+            "pending_age_seconds": pending_age if pending else None,
             "status": raw["status"],
+            "health_reason": health_reason,
             "age_key_version": raw["age_key_version"],
             "local_verified": "verified" if raw["local_verified"] else "not_verified",
             "object_lock_verified": (
-                "verified" if raw["object_lock_verified"] is True else "not_verified"
+                "true" if raw["object_lock_verified"] is True
+                else "false" if raw["object_lock_verified"] is False
+                else "unknown"
             ),
             "success_age_seconds": age,
             "uploader_service_status": "success" if raw["uploader_service_ok"] else "failed",
@@ -228,6 +245,7 @@ def offsite_backup_probe(path: str, target="backups", now=None):
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return [
             _obs(target, "offsite.health", "offsite_status_file", "critical", "CRITICAL"),
+            _obs(target, "offsite.health_reason", "offsite_status_file", "status_unavailable"),
             _obs(target, "offsite.error_code", "offsite_status_file", "status_unavailable"),
         ]
 

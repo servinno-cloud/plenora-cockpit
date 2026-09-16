@@ -31,6 +31,8 @@ services:
     build:
       context: ./backend
       target: production
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     environment:
       COCKPIT_ENV: production
       COCKPIT_DATABASE_URL: ${DATABASE_URL:?required}
@@ -39,7 +41,6 @@ services:
       COCKPIT_ALLOWED_HOSTS: ${COCKPIT_ALLOWED_HOSTS:?required}
       COCKPIT_COOKIE_SECURE: "true"
       COCKPIT_INFRASTRUCTURE_MODE: live
-      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
       COCKPIT_MONITORING_ENVIRONMENT_ID: ${COCKPIT_MONITORING_ENVIRONMENT_ID:?required}
       COCKPIT_MONITORING_COLLECTOR_ID: ${COCKPIT_MONITORING_COLLECTOR_ID:?required}
       COCKPIT_MONITORING_COLLECTOR_SECRET: ${COCKPIT_MONITORING_COLLECTOR_SECRET:?required}
@@ -75,10 +76,9 @@ services:
       target: production
       args:
         NEXT_PUBLIC_API_BASE_URL: ""
-        COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ""
-      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
     depends_on:
       cockpit-backend: {condition: service_healthy}
     networks: [cockpit-internal, caddy]
@@ -97,6 +97,8 @@ services:
     build:
       context: ./backend
       target: production
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     command: [python, -m, app.notification_worker]
     environment:
       COCKPIT_ENV: production
@@ -133,6 +135,8 @@ services:
     build:
       context: ./backend
       target: production
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     command: [python, -m, app.self_monitoring_worker]
     environment:
       COCKPIT_ENV: production
@@ -173,6 +177,8 @@ services:
     build:
       context: ./backend
       target: production
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     command: [python, -m, app.analysis_worker]
     environment:
       COCKPIT_ENV: production
@@ -211,6 +217,8 @@ services:
     build:
       context: ./collector
       target: production
+      args:
+        BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/deploy.sh}
     environment:
       COCKPIT_PROBE_PROFILE: external
       COCKPIT_COLLECTOR_ID: ${COCKPIT_MONITORING_COLLECTOR_ID:?required}
@@ -220,7 +228,6 @@ services:
       COCKPIT_WEB_URL: ${PLENORA_PUBLIC_URL:?required}
       COCKPIT_HEALTH_URL: ${PLENORA_HEALTH_URL:?required}
       COCKPIT_POLL_INTERVAL_SECONDS: ${COLLECTOR_POLL_SECONDS:-60}
-      COCKPIT_RELEASE: ${COCKPIT_RELEASE:?required}
     volumes:
       - cockpit_collector_state:/state
     depends_on:

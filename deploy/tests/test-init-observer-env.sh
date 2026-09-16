@@ -24,6 +24,7 @@ if [[ "$*" == *'.provision'* ]]; then printf '600:0\n'; else /usr/bin/stat "$@";
 EOF
 cat > "$test_root/bin/docker" <<'EOF'
 #!/usr/bin/env bash
+[[ "${DEPLOYMENT_RELEASE:-}" == '0123456789abcdef0123456789abcdef01234567' ]]
 [[ "$*" == *'compose --env-file '*'-f '*'/docker-compose.observer.yml config --quiet' ]]
 EOF
 chmod 700 "$test_root/bin/git" "$test_root/bin/docker" "$test_root/bin/id" "$test_root/bin/stat"
@@ -55,6 +56,10 @@ grep -Fxq "COLLECTOR_ENVIRONMENT_ID=$environment_id" "$test_root/.env.observer"
 grep -Fxq "PLENORA_OBSERVER_ID=$observer_id" "$test_root/.env.observer"
 grep -Fxq "PLENORA_OBSERVER_TOKEN=$observer_token" "$test_root/.env.observer"
 grep -Fxq "PLENORA_MONITOR_DATABASE_URL=$database_url" "$test_root/.env.observer"
+! grep -q '^PLENORA_OBSERVER_RELEASE=' "$test_root/.env.observer"
+grep -Fq 'BUILD_COMMIT: ${DEPLOYMENT_RELEASE:?set by deploy/observer-deploy.sh}' \
+  "$test_root/docker-compose.observer.yml"
+! grep -Fq 'PLENORA_OBSERVER_RELEASE:' "$test_root/docker-compose.observer.yml"
 [[ ! -e "$test_root/.observer-database.provision" ]]
 [[ ! -e "$test_root/.observer-identity.provision" ]]
 

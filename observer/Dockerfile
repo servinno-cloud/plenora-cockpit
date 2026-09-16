@@ -1,5 +1,8 @@
 FROM python:3.12-slim AS base
+ARG BUILD_COMMIT=development
 WORKDIR /app
+ENV PLENORA_OBSERVER_RELEASE=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 RUN groupadd --gid 10003 observer \
     && useradd --create-home --uid 10003 --gid 10003 observer
 COPY --chown=observer:observer observer/server.py ./

@@ -36,3 +36,30 @@ jobs:
       - name: Test collector
         working-directory: collector
         run: python -m pytest
+      - name: Test deployment contracts
+        run: python -m unittest discover -s deploy/tests -p "test_*.py"
+      - name: Test deployment shell contracts
+        run: |
+          for test_script in deploy/tests/test-*.sh; do
+            bash "$test_script"
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+      - name: Install pnpm
+        run: npm install --global pnpm@11.9.0
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint frontend
+        working-directory: frontend
+        run: pnpm lint
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: pnpm typecheck
+      - name: Test frontend
+        working-directory: frontend
+        run: pnpm test
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build

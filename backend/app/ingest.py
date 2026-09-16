@@ -31,6 +31,12 @@ ALLOWED_SIGNALS = {
     "offsite.health",
     "offsite.last_success_at",
     "offsite.last_finalizer_success_at",
+    "offsite.attempted_at",
+    "offsite.current_backup_id",
+    "offsite.last_success_backup_id",
+    "offsite.pending_age_seconds",
+    "offsite.health_reason",
+    # Legacy buffered snapshots may still contain this ambiguous field.
     "offsite.backup_id",
     "offsite.status",
     "offsite.age_key_version",
@@ -85,7 +91,29 @@ TEXT_VALUES = {
     "offsite.health": {"healthy", "warning", "critical"},
     "offsite.status": {"never", "running", "success", "partial", "failed"},
     "offsite.local_verified": {"verified", "not_verified"},
-    "offsite.object_lock_verified": {"verified", "not_verified"},
+    # The publisher emits true/false/unknown. The legacy values remain ingestible
+    # only so an already-buffered pre-deployment snapshot is not rejected.
+    "offsite.object_lock_verified": {
+        "true",
+        "false",
+        "unknown",
+        "verified",
+        "not_verified",
+    },
+    "offsite.health_reason": {
+        "healthy",
+        "pending_provider_verification",
+        "pending_provider_verification_expired",
+        "status_unavailable",
+        "local_verify_failed",
+        "uploader_failed",
+        "finalizer_failed",
+        "timer_inactive",
+        "last_success_missing",
+        "last_success_stale",
+        "offsite_status_not_success",
+        "object_lock_not_verified",
+    },
     "offsite.uploader_service_status": {"success", "failed"},
     "offsite.finalizer_service_status": {"success", "failed"},
     "offsite.uploader_timer_status": {"active", "inactive", "disabled"},
@@ -135,6 +163,7 @@ class ObservationBody(BaseModel):
                 "backup.last_success_at",
                 "offsite.last_success_at",
                 "offsite.last_finalizer_success_at",
+                "offsite.attempted_at",
             }:
                 if not value and signal.startswith("backup."):
                     raise ValueError("backup timestamp is not safe")
@@ -148,7 +177,11 @@ class ObservationBody(BaseModel):
                 value == "unknown" or re.fullmatch(r"[0-9a-f]{7,64}", value)
             ):
                 raise ValueError("git commit is not safe")
-            elif signal == "offsite.backup_id" and not (
+            elif signal in {
+                "offsite.backup_id",
+                "offsite.current_backup_id",
+                "offsite.last_success_backup_id",
+            } and not (
                 value == "" or re.fullmatch(r"20\d{2}-[01]\d-[0-3]\dT[0-2]\d[0-5]\d[0-5]\dZ", value)
             ):
                 raise ValueError("offsite backup id is not safe")
@@ -172,7 +205,10 @@ class ObservationBody(BaseModel):
                 "backup.git_commit",
                 "offsite.last_success_at",
                 "offsite.last_finalizer_success_at",
+                "offsite.attempted_at",
                 "offsite.backup_id",
+                "offsite.current_backup_id",
+                "offsite.last_success_backup_id",
                 "offsite.age_key_version",
                 "offsite.error_code",
                 "service.started_at",

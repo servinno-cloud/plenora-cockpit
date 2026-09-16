@@ -1,6 +1,9 @@
 FROM python:3.12-slim AS base
+ARG BUILD_COMMIT=development
 WORKDIR /app
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app \
+    COCKPIT_RELEASE=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 RUN useradd --create-home --uid 10002 collector && mkdir /state && chown collector:collector /state
 COPY --chown=collector:collector src ./src
 COPY --chown=collector:collector pyproject.toml ./

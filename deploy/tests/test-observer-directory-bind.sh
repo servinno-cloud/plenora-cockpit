@@ -74,7 +74,7 @@ if grep -Fq '/var/backups' "$repo_root/docker-compose.observer.yml"; then
   exit 1
 fi
 PLENORA_OBSERVER_TOKEN=test-token \
-PLENORA_OBSERVER_RELEASE=test-release \
+DEPLOYMENT_RELEASE=0123456789abcdef0123456789abcdef01234567 \
 PLENORA_MONITOR_DATABASE_URL=postgresql://monitor:test@database:5432/plenora \
 DOCKER_GID=999 \
 OBSERVER_CONTAINER_CADDY=test-caddy \
