@@ -312,7 +312,7 @@ def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
 
     for sequence in (1, 2):
         body = payload(
-            environment, collector, sequence, "warning", signal="offsite.health",
+            environment, collector, sequence, None, signal="offsite.health",
             state="WARNING", target="backups", source="offsite_status_file",
             observed_at=start + timedelta(seconds=sequence),
         )
@@ -323,7 +323,7 @@ def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
     incident_id = incident.id
 
     body = payload(
-        environment, collector, 3, "critical", signal="offsite.health",
+        environment, collector, 3, None, signal="offsite.health",
         state="CRITICAL", target="backups", source="offsite_status_file",
         observed_at=start + timedelta(seconds=3),
     )
@@ -334,7 +334,7 @@ def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
 
     for sequence in (4, 5):
         body = payload(
-            environment, collector, sequence, "healthy", signal="offsite.health",
+            environment, collector, sequence, None, signal="offsite.health",
             state="HEALTHY", target="backups", source="offsite_status_file",
             observed_at=start + timedelta(seconds=sequence),
         )
@@ -347,6 +347,71 @@ def test_offsite_health_opens_escalates_deduplicates_and_resolves(client, db):
         NotificationEventType.ESCALATED,
         NotificationEventType.RESOLVED,
     ]
+
+
+def test_offsite_health_uses_explicit_status_without_measurement(client, db):
+    environment, collector = setup_monitoring(db)
+    cases = (
+        ("HEALTHY", "HEALTHY", "ok"),
+        ("WARNING", "WARNING", "offsite_backup_health"),
+        ("CRITICAL", "CRITICAL", "offsite_backup_health"),
+        ("DEGRADED", "UNKNOWN", "signal_unknown"),
+        ("UNKNOWN", "UNKNOWN", "signal_unknown"),
+    )
+
+    for sequence, (source_state, expected_state, expected_code) in enumerate(cases, start=1):
+        body = payload(
+            environment,
+            collector,
+            sequence,
+            None,
+            signal="offsite.health",
+            state=source_state,
+            target="backups",
+            source="offsite_status_file",
+        )
+        assert post(client, environment, body).status_code == 202
+        observation = db.scalar(
+            select(Observation).where(Observation.snapshot_id == uuid.UUID(body["snapshot_id"]))
+        )
+        assert observation.state.value == expected_state
+        assert observation.code == expected_code
+        assert observation.numeric_value is None
+        assert observation.text_value is None
+
+
+def test_missing_offsite_health_does_not_resolve_active_incident(client, db):
+    environment, collector = setup_monitoring(db)
+    for sequence in (1, 2):
+        body = payload(
+            environment,
+            collector,
+            sequence,
+            None,
+            signal="offsite.health",
+            state="CRITICAL",
+            target="backups",
+            source="offsite_status_file",
+        )
+        assert post(client, environment, body).status_code == 202
+
+    incident = db.scalar(select(Incident))
+    assert incident and incident.lifecycle == IncidentLifecycle.OPEN
+    for sequence in (3, 4):
+        body = payload(
+            environment,
+            collector,
+            sequence,
+            "success",
+            signal="offsite.status",
+            state="HEALTHY",
+            target="backups",
+            source="offsite_status_file",
+        )
+        assert post(client, environment, body).status_code == 202
+
+    db.expire_all()
+    assert db.get(Incident, incident.id).lifecycle == IncidentLifecycle.OPEN
 
 
 def test_offsite_pending_grace_does_not_open_or_flap_incident(client, db):

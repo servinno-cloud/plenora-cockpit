@@ -76,6 +76,29 @@ def test_existing_local_backup_health_semantics_remain_green():
     )
 
 
+def test_offsite_health_status_does_not_require_a_measurement():
+    assert classify("offsite.health", None, HealthState.HEALTHY) == (
+        HealthState.HEALTHY,
+        "ok",
+    )
+    assert classify("offsite.health", None, HealthState.WARNING) == (
+        HealthState.WARNING,
+        "offsite_backup_health",
+    )
+    assert classify("offsite.health", None, HealthState.CRITICAL) == (
+        HealthState.CRITICAL,
+        "offsite_backup_health",
+    )
+    assert classify("offsite.health", None, HealthState.DEGRADED) == (
+        HealthState.UNKNOWN,
+        "signal_unknown",
+    )
+    assert classify("offsite.health", None, HealthState.UNKNOWN) == (
+        HealthState.UNKNOWN,
+        "signal_unknown",
+    )
+
+
 def test_recent_verified_local_backup_ignores_non_applicable_offsite_pending_age():
     items = [
         observation("Backups", "backup.status"),

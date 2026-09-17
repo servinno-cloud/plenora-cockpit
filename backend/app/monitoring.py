@@ -47,6 +47,16 @@ def fingerprint(environment_id: uuid.UUID, component: str, code: str, target: st
 def classify(
     signal: str, value: bool | int | float | str | None, source_state: HealthState
 ) -> tuple[HealthState, str]:
+    if signal == "offsite.health":
+        states = {
+            HealthState.HEALTHY: HealthState.HEALTHY,
+            HealthState.WARNING: HealthState.WARNING,
+            HealthState.CRITICAL: HealthState.CRITICAL,
+        }
+        state = states.get(source_state, HealthState.UNKNOWN)
+        if state == HealthState.UNKNOWN:
+            return state, "signal_unknown"
+        return state, "ok" if state == HealthState.HEALTHY else "offsite_backup_health"
     if source_state == HealthState.UNKNOWN or value is None:
         return HealthState.UNKNOWN, "signal_unknown"
     if signal in {"https.reachable", "backup.checksum_verified"}:
@@ -81,14 +91,6 @@ def classify(
         if float(value) > 93600:
             return HealthState.WARNING, "backup_unhealthy"
         return HealthState.HEALTHY, "ok"
-    if signal == "offsite.health":
-        states = {
-            "healthy": HealthState.HEALTHY,
-            "warning": HealthState.WARNING,
-            "critical": HealthState.CRITICAL,
-        }
-        state = states.get(str(value), HealthState.UNKNOWN)
-        return state, "ok" if state == HealthState.HEALTHY else "offsite_backup_health"
     if signal == "service.running":
         return (
             (HealthState.HEALTHY, "ok")
