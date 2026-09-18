@@ -6,6 +6,7 @@ import os
 import time
 import uuid
 
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func, select
 
 from .analysis import build_test_context
@@ -176,7 +177,7 @@ def verify_collector_secret() -> None:
     print("Collector credential valid")
 
 
-def queue_test_notification(run_id: uuid.UUID) -> uuid.UUID:
+def queue_test_notification(run_id: uuid.UUID, recipient: str | None = None) -> uuid.UUID:
     deduplication_key = f"test:{run_id}"
     with SessionLocal.begin() as db:
         existing = db.scalar(
@@ -190,6 +191,7 @@ def queue_test_notification(run_id: uuid.UUID) -> uuid.UUID:
             incident_id=None,
             event_type=NotificationEventType.TEST,
             deduplication_key=deduplication_key,
+            test_recipient=recipient,
             from_severity=None,
             to_severity=HealthState.HEALTHY,
         )
@@ -213,12 +215,23 @@ def wait_for_test_notification(event_id: uuid.UUID, timeout_seconds: int = 60) -
     raise SystemExit("Test notification delivery timed out")
 
 
-def test_notification() -> None:
+def test_notification(recipient: str | None = None) -> None:
     if not get_settings().notifications_configured:
         raise SystemExit("E-mail notifications are not configured")
-    event_id = queue_test_notification(uuid.uuid4())
+    event_id = queue_test_notification(uuid.uuid4(), recipient)
     wait_for_test_notification(event_id)
     print("Test notification sent")
+
+
+def notification_recipient(value: str) -> str:
+    if any(separator in value for separator in ("\r", "\n", ",", ";")):
+        raise argparse.ArgumentTypeError("--to requires exactly one valid email address")
+    try:
+        return validate_email(value, check_deliverability=False).normalized
+    except EmailNotValidError as exc:
+        raise argparse.ArgumentTypeError(
+            "--to requires exactly one valid email address"
+        ) from exc
 
 
 def queue_test_analysis(run_id: uuid.UUID) -> uuid.UUID:
@@ -342,7 +355,10 @@ def main() -> None:
         ],
     )
     parser.add_argument("--email", default=os.getenv("COCKPIT_BOOTSTRAP_EMAIL", ""))
+    parser.add_argument("--to", type=notification_recipient)
     args = parser.parse_args()
+    if args.to and args.command != "test-notification":
+        parser.error("--to is only valid for test-notification")
     if args.command == "seed-monitoring":
         seed_monitoring()
     elif args.command == "rotate-collector-secret":
@@ -350,7 +366,7 @@ def main() -> None:
     elif args.command == "verify-collector-secret":
         verify_collector_secret()
     elif args.command == "test-notification":
-        test_notification()
+        test_notification(args.to)
     elif args.command == "test-analysis":
         test_analysis()
     elif args.command == "show-last-test-analysis":

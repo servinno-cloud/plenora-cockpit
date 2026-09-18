@@ -76,7 +76,7 @@ def _duration(start: datetime, end: datetime) -> str:
 def build_message(db: Session, event: NotificationEvent, settings: Settings) -> EmailMessage:
     if event.event_type == NotificationEventType.TEST:
         message = EmailMessage()
-        message["To"] = settings.notification_email_to
+        message["To"] = event.test_recipient or settings.notification_email_to
         message["From"] = settings.notification_email_from
         message["Subject"] = "Plenora Cockpit — testnotificatie"
         message.set_content(
@@ -142,10 +142,12 @@ def deliver_pending(db: Session, settings: Settings, provider: EmailProvider | N
             event.last_error_code = "provider_delivery_failed"
             if event.attempt_count >= settings.notification_max_attempts:
                 event.delivery_state = NotificationDeliveryState.FAILED
+                event.test_recipient = None
             logger.warning("notification_delivery_failed", extra={"event_id": str(event.id),
                                                                    "attempt": event.attempt_count})
         else:
             event.delivery_state = NotificationDeliveryState.SENT
+            event.test_recipient = None
             event.sent_at = datetime.now(UTC)
             event.last_error_code = None
             sent += 1

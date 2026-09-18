@@ -195,6 +195,7 @@ class NotificationEvent(Base):
     incident_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("incidents.id"), index=True)
     event_type: Mapped[NotificationEventType] = mapped_column(Enum(NotificationEventType))
     deduplication_key: Mapped[str] = mapped_column(String(160))
+    test_recipient: Mapped[str | None] = mapped_column(String(254))
     from_severity: Mapped[HealthState | None] = mapped_column(Enum(HealthState))
     to_severity: Mapped[HealthState] = mapped_column(Enum(HealthState))
     delivery_state: Mapped[NotificationDeliveryState] = mapped_column(

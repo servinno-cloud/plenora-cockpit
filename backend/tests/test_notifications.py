@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 from test_foundation import login, owner
 from test_monitoring import payload, post, setup_monitoring
@@ -109,6 +110,7 @@ def test_successful_delivery_and_incident_api_auth(client, db):
     assert deliver_pending(db, configured(), provider) == 1
     event = db.scalar(select(NotificationEvent))
     assert event.delivery_state == NotificationDeliveryState.SENT
+    assert provider.messages[0]["To"] == "operations@example.test"
     assert "cockpit.plenora.nl/incidenten" in provider.messages[0].get_content()
     owner(db)
     assert login(client).status_code == 200
@@ -134,6 +136,7 @@ def test_synthetic_notification_uses_outbox_worker_without_incident(db, capsys):
     assert deliver_pending(db, configured(), provider) == 1
     wait_for_test_notification(first_id, timeout_seconds=0)
     message = provider.messages[0]
+    assert message["To"] == "operations@example.test"
     assert message["Subject"] == "Plenora Cockpit — testnotificatie"
     assert "Dit is een test" in message.get_content()
     assert "https://cockpit.plenora.nl/incidenten" in message.get_content()
@@ -142,14 +145,83 @@ def test_synthetic_notification_uses_outbox_worker_without_incident(db, capsys):
     assert "smtp.example.test" not in output.out + output.err
 
 
+def test_synthetic_notification_recipient_override_is_event_scoped(db):
+    settings = configured()
+    event_id = queue_test_notification(uuid.uuid4(), "hotmail@example.test")
+    event = db.get(NotificationEvent, event_id)
+    assert event.test_recipient == "hotmail@example.test"
+
+    provider = RecordingProvider()
+    assert deliver_pending(db, settings, provider) == 1
+    assert provider.messages[0]["To"] == "hotmail@example.test"
+    assert settings.notification_email_to == "operations@example.test"
+    db.refresh(event)
+    assert event.test_recipient is None
+
+
+@pytest.mark.parametrize(
+    "recipient",
+    ["invalid", "first@example.test,second@example.test", "first@example.test;second@example.test"],
+)
+def test_cli_rejects_invalid_test_notification_recipient(monkeypatch, capsys, recipient):
+    from app import cli
+
+    monkeypatch.setattr(
+        "sys.argv", ["python -m app.cli", "test-notification", "--to", recipient]
+    )
+    with pytest.raises(SystemExit):
+        cli.main()
+    output = capsys.readouterr()
+    assert recipient not in output.out + output.err
+
+
+def test_cli_rejects_test_notification_header_injection(monkeypatch, capsys):
+    from app import cli
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["python -m app.cli", "test-notification", "--to", "safe@example.test\nBcc:x@example.test"],
+    )
+    with pytest.raises(SystemExit):
+        cli.main()
+    output = capsys.readouterr()
+    assert "Bcc:" not in output.out + output.err
+
+
+def test_cli_rejects_recipient_override_for_other_commands(monkeypatch):
+    from app import cli
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["python -m app.cli", "test-analysis", "--to", "other@example.com"],
+    )
+    with pytest.raises(SystemExit):
+        cli.main()
+
+
 def test_cli_dispatches_test_notification_without_sensitive_output(monkeypatch, capsys):
     from app import cli
 
     called = []
-    monkeypatch.setattr(cli, "test_notification", lambda: called.append(True))
+    monkeypatch.setattr(cli, "test_notification", lambda recipient=None: called.append(recipient))
     monkeypatch.setattr("sys.argv", ["python -m app.cli", "test-notification"])
     cli.main()
-    assert called == [True]
+    assert called == [None]
     output = capsys.readouterr()
     assert "recipient" not in output.out.casefold() + output.err.casefold()
     assert "smtp" not in output.out.casefold() + output.err.casefold()
+
+
+def test_cli_dispatches_test_notification_recipient_override(monkeypatch, capsys):
+    from app import cli
+
+    called = []
+    monkeypatch.setattr(cli, "test_notification", lambda recipient=None: called.append(recipient))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["python -m app.cli", "test-notification", "--to", "Hotmail@Example.COM"],
+    )
+    cli.main()
+    assert called == ["Hotmail@example.com"]
+    output = capsys.readouterr()
+    assert "hotmail@example.com" not in output.out.casefold() + output.err.casefold()
